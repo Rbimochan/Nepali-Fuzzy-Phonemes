@@ -30,10 +30,11 @@ Example: `clips/ba_bha/spk01_baani_ba.wav`
 ## Recording checklist (per §2 of bimochan.html)
 
 - [ ] 16kHz mono, minimal background noise, trimmed silence
+- [ ] Words to read: see [wordlist.md](wordlist.md) — 5 words per phoneme per pair
 - [ ] Each pair: aim for a handful of words per phoneme per speaker, not just one token
 - [ ] At least 2–3 speakers per pilot pair if self-recording (per open question in §8 — leaning toward recording now rather than waiting on the community pipeline)
 - [ ] No duplicate filenames within a pair folder
 
 ## Status
 
-Empty — no clips collected yet as of 2026-08-19. Next: check whether any community-collected clips already exist for these 8 pairs before recording a self-collected pilot set.
+Empty — no clips collected yet as of 2026-08-19. Word list ready. Next: check whether any community-collected clips already exist for these 8 pairs before recording a self-collected pilot set.
