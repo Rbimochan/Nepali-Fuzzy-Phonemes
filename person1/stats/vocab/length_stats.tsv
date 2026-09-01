@@ -1,0 +1,17 @@
+metric	value
+n_types	48995
+len_min	1
+len_max	21
+len_mean	7.43
+len_median	7
+len_p25	6
+len_p75	9
+len_p90	11
+len_p99	15
+freq_min	1
+freq_max	6050
+freq_mean	9.52
+freq_median	2
+freq_p90	13
+freq_p99	118
+total_tokens	466343
