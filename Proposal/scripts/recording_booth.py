@@ -30,6 +30,13 @@ from streamlit_mic_recorder import mic_recorder
 # device, set it as the *system* default input (macOS: System Settings >
 # Sound > Input) and refresh the page — the picker here can preview any
 # device, but capture always follows the OS default.
+#
+# IMPORTANT: this monitor only opens the mic stream while explicitly
+# "testing" (Test/Stop button), and always releases it afterwards. Some
+# devices — a wireless lavalier's USB/Bluetooth receiver especially — only
+# allow one open capture session at a time, so an always-on preview stream
+# would fight the recorder below for the device and make Record silently
+# fail. Always press Stop test before recording for real.
 MIC_PICKER_HTML = """
 <div id="mic-picker" style="font-family:-apple-system,sans-serif;">
   <select id="mic-select" style="width:100%;padding:0.5rem;border-radius:6px;
@@ -47,10 +54,14 @@ MIC_PICKER_HTML = """
     <div style="flex:1;height:8px;border-radius:999px;background:#20241f;overflow:hidden;">
       <div id="mic-level" style="height:100%;width:0%;background:#6bc79a;transition:width 0.05s linear;"></div>
     </div>
+    <button id="mic-toggle" style="padding:0.35rem 0.8rem;border-radius:999px;border:1px solid #6bc79a;
+      background:transparent;color:#6bc79a;font-size:0.78rem;font-weight:600;cursor:pointer;white-space:nowrap;">
+      ▶ Test mic
+    </button>
   </div>
 
   <div id="mic-status" style="margin-top:0.4rem;font-size:0.78rem;color:#9aa39c;">
-    Monitor only — nothing is recorded or saved here. Speak into the mic to test it.
+    Monitor is off — mic isn't in use. Press "Test mic" to check it, "Stop test" before recording for real.
   </div>
 </div>
 <script>
@@ -59,13 +70,23 @@ MIC_PICKER_HTML = """
   const levelBar = document.getElementById("mic-level");
   const status = document.getElementById("mic-status");
   const canvas = document.getElementById("mic-wave");
+  const toggleBtn = document.getElementById("mic-toggle");
   const ctx2d = canvas.getContext("2d");
   let currentStream = null;
   let rafId = null;
+  let audioCtx = null;
+  let monitoring = false;
 
-  function stopStream() {
+  function stopMonitor(reason) {
+    monitoring = false;
     if (rafId) cancelAnimationFrame(rafId);
-    if (currentStream) currentStream.getTracks().forEach(t => t.stop());
+    rafId = null;
+    if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null; }
+    if (audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null; }
+    ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+    levelBar.style.width = "0%";
+    toggleBtn.textContent = "▶ Test mic";
+    if (reason) status.textContent = reason;
   }
 
   function looksLikeLavalier(label) {
@@ -90,35 +111,35 @@ MIC_PICKER_HTML = """
       const lav = inputs.find(d => looksLikeLavalier(d.label));
       if (lav) {
         select.value = lav.deviceId;
-        status.textContent = "Auto-selected \\"" + (lav.label || "wireless mic") + "\\" — looks like your lavalier.";
+        status.textContent = "Auto-selected \\"" + (lav.label || "wireless mic") + "\\" — looks like your lavalier. Press \\"Test mic\\" to check it.";
       }
-      startMonitor(select.value);
     } catch (e) {
       select.innerHTML = "<option>Could not list devices</option>";
       status.textContent = String(e);
     }
   }
 
-  async function startMonitor(deviceId) {
-    stopStream();
+  async function startMonitor() {
     try {
+      const deviceId = select.value;
       const constraints = { audio: deviceId ? { deviceId: { exact: deviceId } } : true };
       currentStream = await navigator.mediaDevices.getUserMedia(constraints);
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       const source = audioCtx.createMediaStreamSource(currentStream);
       const analyser = audioCtx.createAnalyser();
       analyser.fftSize = 1024;
       source.connect(analyser);
       const timeData = new Uint8Array(analyser.frequencyBinCount);
 
-      function resizeCanvas() {
-        canvas.width = canvas.clientWidth * devicePixelRatio;
-        canvas.height = canvas.clientHeight * devicePixelRatio;
-      }
-      resizeCanvas();
-      window.addEventListener("resize", resizeCanvas);
+      canvas.width = canvas.clientWidth * devicePixelRatio;
+      canvas.height = canvas.clientHeight * devicePixelRatio;
+
+      monitoring = true;
+      toggleBtn.textContent = "■ Stop test";
+      status.textContent = "Testing — nothing is recorded or saved. Speak into the mic.";
 
       (function loop() {
+        if (!monitoring) return;
         rafId = requestAnimationFrame(loop);
         analyser.getByteTimeDomainData(timeData);
 
@@ -143,17 +164,31 @@ MIC_PICKER_HTML = """
         levelBar.style.width = Math.min(100, rms * 300) + "%";
       })();
     } catch (e) {
-      status.textContent = "Mic preview unavailable: " + e.message;
+      status.textContent = "Mic test unavailable: " + e.message;
     }
   }
 
+  toggleBtn.addEventListener("click", () => {
+    if (monitoring) {
+      stopMonitor("Stopped — mic is free for recording.");
+    } else {
+      startMonitor();
+    }
+  });
+
   select.addEventListener("change", () => {
-    startMonitor(select.value);
-    status.textContent = "Monitor only — nothing is recorded or saved here.";
+    if (monitoring) startMonitor(); // restart on the newly chosen device
+  });
+
+  // Safety net: never leave the mic open if the tab/frame goes away or hides.
+  window.addEventListener("beforeunload", () => stopMonitor());
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) stopMonitor("Stopped (tab hidden) — mic is free.");
   });
 
   try {
-    // Trigger a permission prompt so device labels are populated.
+    // Trigger a brief permission prompt so device labels are populated,
+    // then immediately release it — this does not start monitoring.
     const tmp = await navigator.mediaDevices.getUserMedia({ audio: true });
     tmp.getTracks().forEach(t => t.stop());
   } catch (e) {
@@ -297,7 +332,18 @@ st.code(str(target_path.relative_to(REPO_ROOT)), language=None)
 with st.expander("🎚️ Mic input monitor", expanded=True):
     components.html(MIC_PICKER_HTML, height=200)
 
-audio = mic_recorder(start_prompt="🔴 Record", stop_prompt="⏹ Stop", key=f"rec_{st.session_state.idx}")
+# A redo counter per word gives the recorder widget a fresh key each time,
+# so "Redo" fully remounts it (new mic session) instead of just re-showing
+# the same cached take — st.rerun() alone doesn't clear a component's
+# last returned value.
+if "redo_counts" not in st.session_state:
+    st.session_state.redo_counts = {}
+redo_n = st.session_state.redo_counts.get(st.session_state.idx, 0)
+
+audio = mic_recorder(
+    start_prompt="🔴 Record", stop_prompt="⏹ Stop",
+    key=f"rec_{st.session_state.idx}_{redo_n}",
+)
 
 if audio:
     st.audio(audio["bytes"])
@@ -306,13 +352,15 @@ if audio:
         if st.button("✅ Keep & continue", disabled=not speaker, use_container_width=True):
             target_path.parent.mkdir(parents=True, exist_ok=True)
             target_path.write_bytes(audio["bytes"])
+            st.session_state.redo_counts.pop(st.session_state.idx, None)
             nxt = next((i for i, it in enumerate(ITEMS)
                         if (it["pair_id"] + it["romanized"]) not in recorded_set()), None)
             st.session_state.idx = nxt if nxt is not None else st.session_state.idx
             st.success(f"Saved {target_path.name}")
             st.rerun()
     with col2:
-        if st.button("↺ Redo", use_container_width=True):
+        if st.button("↺ Redo (restart recorder)", use_container_width=True):
+            st.session_state.redo_counts[st.session_state.idx] = redo_n + 1
             st.rerun()
 
 st.markdown("---")
