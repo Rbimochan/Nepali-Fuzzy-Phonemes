@@ -16,8 +16,11 @@ Safari/Chrome and record. Files land directly in Proposal/clips/.
 from __future__ import annotations
 
 import base64
+import io
+import wave
 from pathlib import Path
 
+import numpy as np
 import streamlit as st
 import streamlit.components.v1 as components
 from streamlit_mic_recorder import mic_recorder
@@ -274,6 +277,38 @@ def output_player_html(audio_base64: str, mime: str) -> str:
 """
 
 
+def wav_signal_stats(wav_bytes: bytes) -> dict | None:
+    """Peak level / duration from real WAV bytes, so 'did it record?' has a
+    concrete answer instead of relying on whether playback happens to work
+    in the browser. Returns None if the bytes aren't parseable as WAV
+    (e.g. output_format is webm, which this can't decode without a codec)."""
+    try:
+        with wave.open(io.BytesIO(wav_bytes), "rb") as w:
+            n_frames = w.getnframes()
+            sample_rate = w.getframerate()
+            sample_width = w.getsampwidth()
+            raw = w.readframes(n_frames)
+    except (wave.Error, EOFError):
+        return None
+
+    if n_frames == 0:
+        return {"duration_s": 0.0, "peak_pct": 0.0, "rms_pct": 0.0, "sample_rate": sample_rate}
+
+    dtype = {1: np.int8, 2: np.int16, 4: np.int32}.get(sample_width, np.int16)
+    samples = np.frombuffer(raw, dtype=dtype).astype(np.float64)
+    full_scale = float(np.iinfo(dtype).max)
+
+    peak = float(np.max(np.abs(samples))) if samples.size else 0.0
+    rms = float(np.sqrt(np.mean(samples**2))) if samples.size else 0.0
+
+    return {
+        "duration_s": n_frames / sample_rate,
+        "peak_pct": 100.0 * peak / full_scale,
+        "rms_pct": 100.0 * rms / full_scale,
+        "sample_rate": sample_rate,
+    }
+
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CLIPS_DIR = REPO_ROOT / "Proposal" / "clips"
 
@@ -442,6 +477,36 @@ audio = mic_recorder(
 if audio:
     take_mime = "audio/wav" if output_format == "wav" else "audio/webm"
     take_b64 = base64.b64encode(audio["bytes"]).decode("ascii")
+
+    stats = wav_signal_stats(audio["bytes"]) if output_format == "wav" else None
+    if stats is None:
+        st.warning(
+            f"Got {len(audio['bytes'])} bytes back but couldn't parse them as WAV "
+            "to check signal level (only happens if output format isn't WAV). "
+            "Listen back below to confirm it captured your voice."
+        )
+    elif stats["duration_s"] == 0:
+        st.error("Empty recording (0 frames) — the mic likely wasn't actually capturing. "
+                  "Check the Mic input monitor above, or try a different input device.")
+    elif stats["peak_pct"] < 2.0:
+        st.error(
+            f"Recorded {stats['duration_s']:.1f}s but peak level is only "
+            f"{stats['peak_pct']:.1f}% — that's silence or near-silence, not your "
+            "voice. Check the mic isn't muted, is close enough, and isn't the wrong "
+            "device (see the Mic input monitor above). Redo before keeping this."
+        )
+    elif stats["peak_pct"] < 10.0:
+        st.warning(
+            f"Recorded {stats['duration_s']:.1f}s, peak level {stats['peak_pct']:.1f}% "
+            "— quiet, but not silent. Might be usable; move closer to the mic if you "
+            "want a stronger signal."
+        )
+    else:
+        st.success(
+            f"Recorded {stats['duration_s']:.1f}s, peak level {stats['peak_pct']:.0f}% "
+            f"— looks like real speech was captured."
+        )
+
     with st.expander("🔊 Output device", expanded=True):
         components.html(output_player_html(take_b64, take_mime), height=140)
     col1, col2 = st.columns(2)
