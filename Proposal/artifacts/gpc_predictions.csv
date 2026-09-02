@@ -1,0 +1,11 @@
+pair_id,file,word,true_label,predicted_label,posterior_probability,posterior_variance
+ba_bha,Proposal/clips/ba_bha/bim_baag_ba.wav,baag,ba,bha,0.5000000041043676,0.24999999999999997
+ba_bha,Proposal/clips/ba_bha/bim_baala_ba.wav,baala,ba,bha,0.5001717385882902,0.2499999705058573
+ba_bha,Proposal/clips/ba_bha/bim_baani_ba.wav,baani,ba,bha,0.5000004851884832,0.2499999999997646
+ba_bha,Proposal/clips/ba_bha/bim_bar_ba.wav,bar,ba,bha,0.5005798262551484,0.24999966380151384
+ba_bha,Proposal/clips/ba_bha/bim_bhaag_bha.wav,bhaag,bha,bha,0.500000007367206,0.24999999999999994
+ba_bha,Proposal/clips/ba_bha/bim_bhaala_bha.wav,bhaala,bha,ba,0.5000053403247895,0.24999999997148092
+ba_bha,Proposal/clips/ba_bha/bim_bhaani_bha.wav,bhaani,bha,bha,0.5000000274816794,0.24999999999999925
+ba_bha,Proposal/clips/ba_bha/bim_bhar_bha.wav,bhar,bha,ba,0.5000000049876101,0.24999999999999997
+ba_bha,Proposal/clips/ba_bha/bim_bhoot_bha.wav,bhoot,bha,bha,0.500000020982064,0.24999999999999956
+ba_bha,Proposal/clips/ba_bha/bim_boot_ba.wav,boot,ba,ba,0.5000000269204374,0.24999999999999928

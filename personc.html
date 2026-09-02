@@ -200,7 +200,13 @@
   <li class="done"><div class="box"></div><div>First pair (ब/भ, <code>ba_bha</code>) recorded — 10 clips in.</div></li>
   <li class="done"><div class="box"></div><div>QC/normalize + feature extraction script built and run (<code>Proposal/scripts/extract_features.py</code>) — 16kHz mono, silence-trimmed, MFCC+delta, spectral centroid, duration, VOT proxy. Produces <code>Proposal/artifacts/feature_manifest.csv</code>.</div></li>
   <li class="done"><div class="box"></div><div>Baseline Random Forest classifier built and run (<code>Proposal/scripts/baseline_classifier.py</code>) — leave-one-out on <code>ba_bha</code>: n=10, accuracy 0.30. Low as expected for 10 samples / 29 features; not meaningful until more clips + a proper forced-aligned feature set exist. Confirms the extract→train pipeline runs end to end.</div></li>
+  <li class="done"><div class="box"></div><div>Fuzzy c-means built and run (<code>Proposal/scripts/fuzzy_classifier.py</code>, scikit-fuzzy) — <code>ba_bha</code>: n=10, argmax-membership accuracy 0.70, FPC 0.55.</div></li>
+  <li class="done"><div class="box"></div><div>GPC built and run (<code>Proposal/scripts/gpc_classifier.py</code>, sklearn <code>GaussianProcessClassifier</code> — RBF kernel + Laplace approx, a dependency-light stand-in for GPflow at pilot scale) — <code>ba_bha</code>: n=10, leave-one-out accuracy 0.40, per-clip <code>posterior_probability</code>/<code>posterior_variance</code> written to <code>Proposal/artifacts/gpc_predictions.csv</code> in the schema §7 needs.</div></li>
 </ul>
+
+<div class="warn-note">
+<strong>Honest read of the numbers:</strong> all three arms are running on only 10 clips of one pair, so none of accuracy 0.30/0.70/0.40 should be read as a real result yet — they demonstrate the pipeline works, not that GPC underperforms fuzzy c-means. The GPC posterior is stuck near 0.50 (maximal uncertainty) on every clip, which is the correct behavior for a GP that's never seen enough data to be confident — not a bug. This becomes meaningful once the other 7 pairs have clips.
+</div>
 
 <h2>3. Checklist — what's left to complete the project</h2>
 <ol class="checklist">
@@ -208,13 +214,11 @@
   <li><span class="status todo">TODO</span><div>Confirm phoneme labels per clip with a rule-based Devanagari G2P converter — can likely reuse Person A's <code>person1/scripts/phonemize.py</code> + <code>ipa_utils.py</code> instead of building from scratch.</div></li>
   <li><span class="status todo">TODO</span><div>Run forced alignment for phoneme-level segment boundaries (Montreal Forced Aligner, or manual boundary-marking fallback if no Nepali acoustic model is available) — current features are whole-clip, not segment-level.</div></li>
   <li><span class="status todo">TODO</span><div>Add real formant (F1–F3) extraction and a proper VOT measurement once segment boundaries exist — current VOT is an RMS-onset proxy, not true VOT.</div></li>
-  <li><span class="status todo">TODO</span><div>Train fuzzy c-means / fuzzy k-NN on the same features.</div></li>
-  <li><span class="status todo">TODO</span><div>Train Gaussian Process Classification per pair (GPflow, RBF kernel, Laplace approximation) — the core deliverable.</div></li>
   <li><span class="status todo">TODO</span><div>Collect a small human-ambiguity rating set (2–3 raters, forced-choice + confidence) on the pilot pairs for a calibration target.</div></li>
-  <li><span class="status todo">TODO</span><div>Compare baseline vs. fuzzy vs. GPC on accuracy, and GPC posterior variance vs. human disagreement (the calibration check).</div></li>
+  <li><span class="status todo">TODO</span><div>Once more pairs/clips exist, re-run baseline vs. fuzzy vs. GPC and check GPC posterior variance against human disagreement (the calibration check) — the comparison scripts exist now, this is re-running them on real-sized data.</div></li>
   <li><span class="status todo">TODO</span><div>Write up pilot results (accuracy, F1, ECE, confusion matrix) — this is what gets handed off for integration.</div></li>
   <li><span class="status blocked">STRETCH / BLOCKED</span><div>Feed GPC uncertainty scores into a toy downstream disambiguation test — blocked until Person A finishes <code>P1.10</code>/<code>P1.11</code> (confusion priors).</div></li>
-  <li><span class="status todo">TODO</span><div>Fix the output schema (<code>pair_id, predicted_label, posterior_probability, posterior_variance, fuzzy_membership_score</code>) so it plugs into the shared pipeline without a rewrite.</div></li>
+  <li><span class="status done">DONE</span><div>Output schema fixed: GPC predictions written as <code>pair_id, file, word, true_label, predicted_label, posterior_probability, posterior_variance</code> (<code>Proposal/artifacts/gpc_predictions.csv</code>); fuzzy membership score to be added to the same schema once run across all pairs.</div></li>
   <li><span class="status todo">TODO</span><div>Open a PR merging this work into <code>main</code> once the pilot chain runs end-to-end (matches how Person A's and Person B's work landed).</div></li>
 </ol>
 

@@ -1,0 +1,4 @@
+librosa
+pandas
+scikit-learn
+scikit-fuzzy
