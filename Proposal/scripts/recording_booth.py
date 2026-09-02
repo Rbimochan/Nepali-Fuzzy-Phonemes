@@ -539,3 +539,41 @@ with col_next:
 if len(done) == len(ITEMS):
     st.balloons()
     st.success("All words recorded for this speaker!")
+
+st.markdown("---")
+with st.expander("📼 Review previous recordings", expanded=False):
+    saved_files = sorted(CLIPS_DIR.glob("*/*.wav")) + sorted(
+        p for p in CLIPS_DIR.glob("*/*.webm")
+    )
+    if not saved_files:
+        st.caption("Nothing saved yet.")
+    else:
+        labels = {p: f"{p.parent.name} / {p.name}" for p in saved_files}
+        chosen = st.selectbox(
+            "Pick a saved clip to check on-site",
+            options=saved_files,
+            format_func=lambda p: labels[p],
+            index=len(saved_files) - 1,  # default to most recently added
+        )
+        clip_bytes = chosen.read_bytes()
+        clip_mime = "audio/wav" if chosen.suffix == ".wav" else "audio/webm"
+
+        review_stats = wav_signal_stats(clip_bytes) if chosen.suffix == ".wav" else None
+        if review_stats:
+            st.caption(
+                f"{review_stats['duration_s']:.1f}s · peak {review_stats['peak_pct']:.0f}% "
+                f"· {review_stats['sample_rate']} Hz"
+                + (" — looks silent, may need a re-record" if review_stats["peak_pct"] < 2.0 else "")
+            )
+        else:
+            st.caption(f"{len(clip_bytes)} bytes, {chosen.suffix} — can't compute level for non-WAV.")
+
+        review_b64 = base64.b64encode(clip_bytes).decode("ascii")
+        components.html(output_player_html(review_b64, clip_mime), height=140)
+
+        col_del, _ = st.columns([1, 3])
+        with col_del:
+            if st.button("🗑️ Delete this clip", key=f"del_{chosen}"):
+                chosen.unlink()
+                st.success(f"Deleted {chosen.name}")
+                st.rerun()
