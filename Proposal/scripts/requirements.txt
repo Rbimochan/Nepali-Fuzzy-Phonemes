@@ -2,3 +2,5 @@ librosa
 pandas
 scikit-learn
 scikit-fuzzy
+streamlit
+streamlit-mic-recorder
