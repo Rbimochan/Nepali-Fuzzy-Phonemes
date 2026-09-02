@@ -15,6 +15,7 @@ Safari/Chrome and record. Files land directly in Proposal/clips/.
 """
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 
 import streamlit as st
@@ -200,6 +201,79 @@ MIC_PICKER_HTML = """
 </script>
 """
 
+
+def output_player_html(audio_base64: str, mime: str) -> str:
+    """Playback widget with an output-device (speaker) picker.
+
+    HTMLMediaElement.setSinkId — the API that actually routes playback to a
+    chosen output device — is Chrome/Edge only; Safari has never implemented
+    it. This detects support and says so plainly rather than pretending the
+    picker works everywhere; on Safari the dropdown still lists devices (for
+    reference) but playback always goes through the system default.
+    """
+    return f"""
+<div style="font-family:-apple-system,sans-serif;">
+  <select id="out-select" style="width:100%;padding:0.5rem;border-radius:6px;
+    border:1px solid #444;background:#1b1f21;color:#eee;font-size:0.85rem;">
+    <option>Loading output devices…</option>
+  </select>
+  <audio id="out-audio" controls style="width:100%;margin-top:0.5rem;"
+    src="data:{mime};base64,{audio_base64}"></audio>
+  <div id="out-status" style="margin-top:0.4rem;font-size:0.78rem;color:#9aa39c;"></div>
+</div>
+<script>
+(async function () {{
+  const select = document.getElementById("out-select");
+  const player = document.getElementById("out-audio");
+  const status = document.getElementById("out-status");
+  const canSetSink = typeof player.setSinkId === "function";
+
+  async function listOutputs() {{
+    try {{
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const outputs = devices.filter(d => d.kind === "audiooutput");
+      select.innerHTML = "";
+      if (!outputs.length) {{
+        select.innerHTML = "<option value=''>System default</option>";
+      }} else {{
+        outputs.forEach((d, i) => {{
+          const opt = document.createElement("option");
+          opt.value = d.deviceId;
+          opt.textContent = d.label || ("Output " + (i + 1));
+          select.appendChild(opt);
+        }});
+      }}
+      status.textContent = canSetSink
+        ? "Pick a device, then press play to preview through it."
+        : "This browser (likely Safari) doesn't support choosing an output "
+          + "device from a page — playback always uses your system default "
+          + "output. Change it in System Settings > Sound > Output if needed.";
+    }} catch (e) {{
+      status.textContent = "Could not list output devices: " + e.message;
+    }}
+  }}
+
+  select.addEventListener("change", async () => {{
+    if (!canSetSink) return;
+    try {{
+      await player.setSinkId(select.value);
+      status.textContent = "Routed to \\"" + (select.options[select.selectedIndex].text) + "\\".";
+    }} catch (e) {{
+      status.textContent = "Couldn't switch output: " + e.message;
+    }}
+  }});
+
+  try {{
+    const tmp = await navigator.mediaDevices.getUserMedia({{ audio: true }});
+    tmp.getTracks().forEach(t => t.stop());
+  }} catch (e) {{ /* labels may stay blank without permission; not fatal here */ }}
+  await listOutputs();
+  navigator.mediaDevices.ondevicechange = listOutputs;
+}})();
+</script>
+"""
+
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CLIPS_DIR = REPO_ROOT / "Proposal" / "clips"
 
@@ -366,7 +440,10 @@ audio = mic_recorder(
 )
 
 if audio:
-    st.audio(audio["bytes"])
+    take_mime = "audio/wav" if output_format == "wav" else "audio/webm"
+    take_b64 = base64.b64encode(audio["bytes"]).decode("ascii")
+    with st.expander("🔊 Output device", expanded=True):
+        components.html(output_player_html(take_b64, take_mime), height=140)
     col1, col2 = st.columns(2)
     with col1:
         if st.button("✅ Keep & continue", disabled=not speaker, use_container_width=True):
