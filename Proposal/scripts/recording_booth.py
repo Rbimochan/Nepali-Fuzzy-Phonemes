@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import base64
 import io
+import re
 import wave
 from pathlib import Path
 
@@ -384,8 +385,16 @@ st.set_page_config(page_title="Phoneme Recording Booth", page_icon="🎙️", la
 if "idx" not in st.session_state:
     st.session_state.idx = 0
 
-speaker = st.sidebar.text_input("Speaker ID", value=st.session_state.get("speaker", ""),
-                                 placeholder="e.g. spk02").strip()
+speaker_raw = st.sidebar.text_input(
+    "Speaker ID", value=st.session_state.get("speaker_raw", ""),
+    placeholder="e.g. spk02",
+    help="Short and anonymized, no spaces — not your real name. "
+         "Gets slugified automatically (lowercase, letters/digits/underscore only).",
+).strip()
+st.session_state.speaker_raw = speaker_raw
+speaker = re.sub(r"[^a-z0-9_]", "", speaker_raw.lower().replace(" ", "_"))
+if speaker_raw and speaker != speaker_raw:
+    st.sidebar.caption(f"Will be saved as: `{speaker}`")
 st.session_state.speaker = speaker
 
 st.sidebar.markdown("---")
