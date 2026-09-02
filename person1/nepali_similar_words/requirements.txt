@@ -1,0 +1,4 @@
+panphon
+numpy
+tqdm
+# piper-phonemize — only for OOV/misspelled G2P, install separately
