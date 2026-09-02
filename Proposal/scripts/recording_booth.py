@@ -279,10 +279,24 @@ speaker = st.sidebar.text_input("Speaker ID", value=st.session_state.get("speake
                                  placeholder="e.g. spk02").strip()
 st.session_state.speaker = speaker
 
+st.sidebar.markdown("---")
+OUTPUT_FORMATS = {
+    "wav": "WAV (uncompressed) — recommended, matches the existing ba_bha clips and "
+           "what extract_features.py expects",
+    "webm": "WebM/Opus (compressed) — smaller files, but NOT what the pipeline reads "
+            "today; you'd need to convert before running extract_features.py",
+}
+output_format = st.sidebar.selectbox(
+    "Output format", options=list(OUTPUT_FORMATS), index=0,
+    format_func=lambda f: f.upper(),
+    help="\n\n".join(f"**{f.upper()}** — {desc}" for f, desc in OUTPUT_FORMATS.items()),
+)
+st.sidebar.caption(OUTPUT_FORMATS[output_format])
+
 
 def clip_path(item: dict) -> Path:
     sp = speaker or "spkXX"
-    fname = f"{sp}_{item['romanized']}_{item['label']}.wav"
+    fname = f"{sp}_{item['romanized']}_{item['label']}.{output_format}"
     return CLIPS_DIR / item["pair_id"] / fname
 
 
@@ -340,9 +354,15 @@ if "redo_counts" not in st.session_state:
     st.session_state.redo_counts = {}
 redo_n = st.session_state.redo_counts.get(st.session_state.idx, 0)
 
+# streamlit_mic_recorder's `format` param actually controls what bytes it
+# returns: "wav" makes it decode + re-encode to real RIFF/WAV (what we want
+# and what the filename promises); its default, "webm", returns the raw
+# MediaRecorder WebM/Opus blob unconverted — saving that with a .wav
+# extension would silently produce a file librosa can't read correctly.
 audio = mic_recorder(
     start_prompt="🔴 Record", stop_prompt="⏹ Stop",
-    key=f"rec_{st.session_state.idx}_{redo_n}",
+    format=output_format,
+    key=f"rec_{st.session_state.idx}_{redo_n}_{output_format}",
 )
 
 if audio:
