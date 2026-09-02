@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Bimochan — Fuzzy Phoneme Experiment Plan</title>
+<style>
+  :root {
+    --bg: #fbfaf8;
+    --fg: #1f2320;
+    --muted: #5b625c;
+    --accent: #2f6f4f;
+    --accent-soft: #e7f2ec;
+    --border: #ddd8d0;
+    --card: #ffffff;
+    --code-bg: #f0efe9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14181a;
+      --fg: #e8eae7;
+      --muted: #9aa39c;
+      --accent: #6bc79a;
+      --accent-soft: #1c2c25;
+      --border: #2c3230;
+      --card: #1b1f21;
+      --code-bg: #20241f;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14181a;
+    --fg: #e8eae7;
+    --muted: #9aa39c;
+    --accent: #6bc79a;
+    --accent-soft: #1c2c25;
+    --border: #2c3230;
+    --card: #1b1f21;
+    --code-bg: #20241f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, "Segoe UI", Inter, sans-serif;
+    line-height: 1.6;
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 5rem;
+  }
+  h1 {
+    font-size: 1.85rem;
+    margin-bottom: 0.2rem;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-size: 1rem;
+    margin-bottom: 2rem;
+  }
+  h2 {
+    font-size: 1.25rem;
+    margin-top: 2.4rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--accent);
+  }
+  h3 {
+    font-size: 1.02rem;
+    margin-top: 1.4rem;
+    margin-bottom: 0.5rem;
+  }
+  p { margin: 0.6rem 0; }
+  ul, ol { padding-left: 1.4rem; }
+  li { margin: 0.35rem 0; }
+  code {
+    background: var(--code-bg);
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.88em;
+  }
+  pre {
+    background: var(--code-bg);
+    padding: 0.9rem 1rem;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    border: 1px solid var(--border);
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.1rem 1.3rem;
+    margin: 1rem 0;
+  }
+  .tag {
+    display: inline-block;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    margin-right: 0.4rem;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.8rem 0;
+    font-size: 0.92rem;
+  }
+  th, td {
+    text-align: left;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid var(--border);
+    vertical-align: top;
+  }
+  th {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .checklist li::marker { color: var(--accent); }
+  .note {
+    border-left: 3px solid var(--accent);
+    background: var(--accent-soft);
+    padding: 0.7rem 1rem;
+    border-radius: 0 8px 8px 0;
+    margin: 1rem 0;
+    font-size: 0.94rem;
+  }
+  .status {
+    font-weight: 600;
+  }
+  .status.todo { color: #b45309; }
+  .status.next { color: var(--accent); }
+  footer {
+    margin-top: 3rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+</style>
+</head>
+<body>
+
+<h1>Bimochan's Experiment Plan</h1>
+<p class="subtitle">Nepali Fuzzy Phonemes — my individual slice of the group project, scoped for solo execution now and merge into <code>bimochanbranch.html</code> / the shared pipeline later.</p>
+
+<div class="note">
+<strong>Scope of this file:</strong> this is <em>my part only</em> — data prep + fuzzy/probabilistic phoneme classification, with Gaussian Process Classification as the flagship method. It does not cover teammates' pieces (base ASR fine-tuning, text-mining/context disambiguation, etc.), which live in their own tracking files and get integrated later. See <a href="Nepali_Fuzzy_Phonemes_Research_Proposal.md">the full proposal</a> for the whole-project picture.
+</div>
+
+<h2>1. What I'm actually building</h2>
+<p>A pipeline that takes candidate Nepali confusable phoneme pairs, extracts acoustic features from real clips, and classifies them with both a hard baseline and an uncertainty-aware model (fuzzy-logic + Gaussian Process Classification), then checks whether the uncertainty the model reports actually lines up with cases humans find ambiguous.</p>
+
+<div class="card">
+<span class="tag">Deliverable</span>
+A working notebook/script chain that goes: <code>raw clips → features → baseline classifier → GPC classifier → calibration check</code>, runnable end-to-end on whatever subset of the Layer-2 dataset exists at the time, plus a short results write-up (accuracy, calibration, confusion matrix) I can hand off.
+</div>
+
+<h2>2. Immediate next steps (in order)</h2>
+<ol class="checklist">
+  <li><span class="status next">NEXT →</span> Pick 5–8 confusable pairs to start with (not all 50) — one from each contrast type in the phonology table (aspirated/unaspirated, retroflex/dental, vowel length, sibilants) so the pilot covers the full fuzziness space, not just one contrast.</li>
+  <li><span class="status todo">TODO</span> Pull matching clips from whatever's already collected under <code>clips/</code>; if too few speakers exist for the pilot pairs, record a handful myself first rather than waiting on the full community collection pipeline.</li>
+  <li><span class="status todo">TODO</span> Build/borrow the rule-based Devanagari G2P converter (needed to confirm phoneme labels on clips before any classifier training).</li>
+  <li><span class="status todo">TODO</span> Run forced alignment (or a rough manual boundary mark if no Nepali-capable aligner is available yet) to get phoneme-level segment boundaries.</li>
+  <li><span class="status todo">TODO</span> Extract features: MFCCs + deltas, formants (F1–F3), VOT, duration, pitch/energy contour. Cache to a feature manifest so every model downstream reads the same file.</li>
+  <li><span class="status todo">TODO</span> Train the hard-boundary baseline (Random Forest) per pair.</li>
+  <li><span class="status todo">TODO</span> Train fuzzy c-means / fuzzy k-NN on the same features.</li>
+  <li><span class="status todo">TODO</span> Train GPC (start with <code>GPflow</code>, RBF kernel, Laplace approximation) per pair — this is the core of my contribution.</li>
+  <li><span class="status todo">TODO</span> Collect a small human-ambiguity rating set myself (2–3 raters, forced-choice + confidence, on the pilot pairs only) to have a real calibration target, even at small scale.</li>
+  <li><span class="status todo">TODO</span> Compare baseline vs. fuzzy vs. GPC on accuracy, and GPC's posterior variance vs. human disagreement (the calibration check).</li>
+  <li><span class="status todo">TODO</span> Write up pilot results — this becomes the evidence base for the full proposal's Layer 2/3 sections and the thing I hand off for integration.</li>
+</ol>
+
+<h2>3. Pilot pair list (starting set)</h2>
+<table>
+<tr><th>Contrast type</th><th>Pair (example)</th><th>Feature focus</th></tr>
+<tr><td>Aspirated vs unaspirated</td><td>ब / भ</td><td>VOT</td></tr>
+<tr><td>Aspirated vs unaspirated</td><td>क / ख</td><td>VOT</td></tr>
+<tr><td>Retroflex vs dental</td><td>ट / त</td><td>Formant transitions (F2/F3)</td></tr>
+<tr><td>Retroflex vs dental</td><td>ड / द</td><td>Formant transitions</td></tr>
+<tr><td>Vowel length</td><td>इ / ई</td><td>Duration</td></tr>
+<tr><td>Vowel length</td><td>उ / ऊ</td><td>Duration</td></tr>
+<tr><td>Sibilant merger</td><td>श / स</td><td>Spectral centroid</td></tr>
+<tr><td>Sibilant merger</td><td>ष / स</td><td>Spectral centroid</td></tr>
+</table>
+<p style="color:var(--muted); font-size:0.88rem;">Reasoning: one pair from each fuzzy-contrast category (§3.2 of the full proposal) keeps the pilot small but representative, so results generalize as evidence rather than being an artifact of one contrast type.</p>
+
+<h2>4. Pipeline sketch</h2>
+<pre>clips/&lt;pair_id&gt;/&lt;speaker_id&gt;_&lt;word&gt;.wav
+    │
+    ▼
+[QC + normalize: 16kHz mono, trim silence, dedupe]
+    │
+    ▼
+[forced alignment → phoneme boundaries]
+    │
+    ▼
+[feature extraction: MFCC, formants, VOT, duration, pitch/energy]
+    │
+    ├──► [baseline: Random Forest, hard label]
+    ├──► [fuzzy: c-means / fuzzy k-NN, membership scores]
+    └──► [GPC: RBF/Matérn kernel, Laplace approx, posterior + variance]
+                │
+                ▼
+    [compare vs. human ambiguity ratings → calibration check]
+                │
+                ▼
+        results write-up (accuracy, F1, ECE, confusion matrix)
+</pre>
+
+<h2>5. Tooling I'll use</h2>
+<ul>
+  <li><code>librosa</code> / <code>praat-parselmouth</code> — feature extraction (formants, VOT-style measurements)</li>
+  <li><code>scikit-learn</code> — Random Forest baseline</li>
+  <li><code>scikit-fuzzy</code> — fuzzy c-means / fuzzy k-NN</li>
+  <li><code>GPflow</code> (or <code>GPyTorch</code> if I end up needing GPU-backed sparse GP) — Gaussian Process Classification</li>
+  <li><code>scipy.stats</code> — Spearman correlation for the uncertainty-vs-human-disagreement check</li>
+  <li>Montreal Forced Aligner, or a manual boundary-marking fallback if no Nepali acoustic model is available</li>
+</ul>
+
+<h2>6. What "done" looks like for my part</h2>
+<div class="card">
+  <p><strong>Minimum:</strong> baseline vs. GPC comparison on the 8 pilot pairs, with accuracy + a calibration plot, reproducible from a single script.</p>
+  <p><strong>Good:</strong> the above plus fuzzy-logic as a third comparison arm, and the human-ambiguity correlation check actually run (not just planned).</p>
+  <p><strong>Stretch (only if time allows before integration):</strong> feed my GPC uncertainty scores into a toy downstream disambiguation test, to have a first RQ5-style result ready before merging with the group's ASR/text-mining pieces.</p>
+</div>
+
+<h2>7. Integration notes for later (→ <code>bimochanbranch.html</code>)</h2>
+<div class="note">
+This file is the solo-execution plan. When it's time to integrate with the rest of the group's work, the merge point is: <strong>my GPC/fuzzy uncertainty scores become an input feature</strong> to whatever confusable-word disambiguation classifier the group builds on top of ASR N-best output (per §14 of the full proposal). Concretely, that means my output manifest needs to expose, per phoneme token: <code>pair_id</code>, <code>predicted_label</code>, <code>posterior_probability</code>, <code>posterior_variance</code>, <code>fuzzy_membership_score</code> — in a stable schema so it plugs into <code>bimochanbranch.html</code>'s pipeline without a rewrite. I'll keep that schema fixed once the pilot works, even if the pair list grows.
+</div>
+
+<h2>8. Open questions I still need to resolve myself</h2>
+<ul>
+  <li>Do I record my own pilot clips now, or wait for the community collection pipeline to produce enough speakers per pilot pair? (Leaning toward recording a small set myself now — don't want to block on collection logistics.)</li>
+  <li>Is there any Nepali-capable forced aligner, or do I need to hand-mark boundaries for the pilot (slower, but unblocks me immediately)?</li>
+  <li>How many human raters can I realistically get for the ambiguity annotation on a solo timeline — is 1 rater (myself) enough for a first pass, with more raters added later?</li>
+</ul>
+
+<footer>
+Bimochan Kunwar — Nepali Fuzzy Phonemes — solo experiment tracking file, precedes integration via <code>bimochanbranch.html</code>.
+</footer>
+
+</body>
+</html>
