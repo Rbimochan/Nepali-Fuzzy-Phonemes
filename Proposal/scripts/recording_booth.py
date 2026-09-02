@@ -18,7 +18,98 @@ from __future__ import annotations
 from pathlib import Path
 
 import streamlit as st
+import streamlit.components.v1 as components
 from streamlit_mic_recorder import mic_recorder
+
+# streamlit-mic-recorder always captures from the OS/browser's default input
+# device (no per-recording device selection). This widget lets you see every
+# input device the browser can see and preview its live level, so you can
+# confirm the right mic is active before recording — to actually switch
+# which one gets used, change the *system* default input device (macOS:
+# System Settings > Sound > Input) and refresh the page.
+MIC_PICKER_HTML = """
+<div id="mic-picker" style="font-family:-apple-system,sans-serif;">
+  <select id="mic-select" style="width:100%;padding:0.4rem;border-radius:6px;
+    border:1px solid #444;background:#1b1f21;color:#eee;font-size:0.85rem;">
+    <option>Requesting microphone permission…</option>
+  </select>
+  <div style="margin-top:0.5rem;height:10px;border-radius:999px;background:#20241f;overflow:hidden;">
+    <div id="mic-level" style="height:100%;width:0%;background:#6bc79a;transition:width 0.05s linear;"></div>
+  </div>
+  <div id="mic-status" style="margin-top:0.3rem;font-size:0.75rem;color:#9aa39c;">Speak to test the level.</div>
+</div>
+<script>
+(async function () {
+  const select = document.getElementById("mic-select");
+  const levelBar = document.getElementById("mic-level");
+  const status = document.getElementById("mic-status");
+  let currentStream = null;
+
+  function stopStream() {
+    if (currentStream) currentStream.getTracks().forEach(t => t.stop());
+  }
+
+  async function listDevices() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const inputs = devices.filter(d => d.kind === "audioinput");
+      select.innerHTML = "";
+      if (!inputs.length) {
+        select.innerHTML = "<option>No microphones found</option>";
+        return;
+      }
+      inputs.forEach((d, i) => {
+        const opt = document.createElement("option");
+        opt.value = d.deviceId;
+        opt.textContent = d.label || ("Microphone " + (i + 1));
+        select.appendChild(opt);
+      });
+      startMeter(select.value);
+    } catch (e) {
+      select.innerHTML = "<option>Could not list devices</option>";
+      status.textContent = String(e);
+    }
+  }
+
+  async function startMeter(deviceId) {
+    stopStream();
+    try {
+      const constraints = { audio: deviceId ? { deviceId: { exact: deviceId } } : true };
+      currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = ctx.createMediaStreamSource(currentStream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      status.textContent = "This is a preview only — actual recording below uses your system default input.";
+      (function loop() {
+        analyser.getByteTimeDomainData(data);
+        let sum = 0;
+        for (let i = 0; i < data.length; i++) { const v = (data[i] - 128) / 128; sum += v * v; }
+        const rms = Math.sqrt(sum / data.length);
+        levelBar.style.width = Math.min(100, rms * 300) + "%";
+        requestAnimationFrame(loop);
+      })();
+    } catch (e) {
+      status.textContent = "Mic preview unavailable: " + e.message;
+    }
+  }
+
+  select.addEventListener("change", () => startMeter(select.value));
+
+  try {
+    // Trigger a permission prompt so device labels are populated.
+    const tmp = await navigator.mediaDevices.getUserMedia({ audio: true });
+    tmp.getTracks().forEach(t => t.stop());
+  } catch (e) {
+    status.textContent = "Microphone permission needed to list devices.";
+  }
+  await listDevices();
+  navigator.mediaDevices.ondevicechange = listDevices;
+})();
+</script>
+"""
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CLIPS_DIR = REPO_ROOT / "Proposal" / "clips"
@@ -148,6 +239,9 @@ meaning = f" — {item['meaning']}" if item["meaning"] != "—" else ""
 st.markdown(f"**{item['romanized']}**{meaning}")
 target_path = clip_path(item)
 st.code(str(target_path.relative_to(REPO_ROOT)), language=None)
+
+with st.expander("🎚️ Mic input", expanded=False):
+    components.html(MIC_PICKER_HTML, height=90)
 
 audio = mic_recorder(start_prompt="🔴 Record", stop_prompt="⏹ Stop", key=f"rec_{st.session_state.idx}")
 
