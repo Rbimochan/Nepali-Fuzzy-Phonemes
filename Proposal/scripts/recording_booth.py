@@ -431,16 +431,27 @@ done = recorded_set()
 st.sidebar.progress(len(done) / len(ITEMS) if ITEMS else 0)
 st.sidebar.caption(f"{len(done)} of {len(ITEMS)} recorded")
 
+remaining_only = st.sidebar.checkbox("Show only remaining words", value=True)
+
 st.sidebar.markdown("---")
 for pid, (name, words) in PAIRS.items():
+    pair_words = [
+        (rom, dev, label, meaning) for rom, dev, label, meaning in words
+        if not remaining_only or (pid + rom) not in done
+    ]
+    if not pair_words:
+        continue
     st.sidebar.markdown(f"**{name}**")
-    for rom, dev, label, meaning in words:
+    for rom, dev, label, meaning in pair_words:
         key = pid + rom
         mark = "✅" if key in done else "⬜️"
         idx = next(i for i, it in enumerate(ITEMS) if it["pair_id"] == pid and it["romanized"] == rom)
         if st.sidebar.button(f"{mark} {dev}  ·  {rom}", key=f"jump_{key}"):
             st.session_state.idx = idx
             st.rerun()
+
+if remaining_only and len(done) == len(ITEMS):
+    st.sidebar.success("Nothing left — everything's recorded!")
 
 st.session_state.idx = max(0, min(st.session_state.idx, len(ITEMS) - 1))
 item = ITEMS[st.session_state.idx]
