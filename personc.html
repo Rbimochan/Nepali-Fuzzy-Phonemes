@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Person C (Bimochan) — Completion Checklist</title>
+<style>
+  :root {
+    --bg: #fbfaf8;
+    --fg: #1f2320;
+    --muted: #5b625c;
+    --accent: #2f6f4f;
+    --accent-soft: #e7f2ec;
+    --border: #ddd8d0;
+    --card: #ffffff;
+    --code-bg: #f0efe9;
+    --warn: #b45309;
+    --warn-soft: #fdf2e2;
+    --done: #2f6f4f;
+    --done-soft: #e7f2ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14181a;
+      --fg: #e8eae7;
+      --muted: #9aa39c;
+      --accent: #6bc79a;
+      --accent-soft: #1c2c25;
+      --border: #2c3230;
+      --card: #1b1f21;
+      --code-bg: #20241f;
+      --warn: #e0a458;
+      --warn-soft: #2b2415;
+      --done: #6bc79a;
+      --done-soft: #1c2c25;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14181a;
+    --fg: #e8eae7;
+    --muted: #9aa39c;
+    --accent: #6bc79a;
+    --accent-soft: #1c2c25;
+    --border: #2c3230;
+    --card: #1b1f21;
+    --code-bg: #20241f;
+    --warn: #e0a458;
+    --warn-soft: #2b2415;
+    --done: #6bc79a;
+    --done-soft: #1c2c25;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, "Segoe UI", Inter, sans-serif;
+    line-height: 1.6;
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 5rem;
+  }
+  h1 { font-size: 1.9rem; margin-bottom: 0.2rem; }
+  .subtitle { color: var(--muted); font-size: 1rem; margin-bottom: 2rem; }
+  h2 {
+    font-size: 1.25rem;
+    margin-top: 2.6rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--accent);
+  }
+  h3 { font-size: 1.02rem; margin-top: 1.4rem; margin-bottom: 0.5rem; }
+  p { margin: 0.6rem 0; }
+  ul, ol { padding-left: 1.4rem; }
+  li { margin: 0.4rem 0; }
+  code {
+    background: var(--code-bg);
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.88em;
+  }
+  pre {
+    background: var(--code-bg);
+    padding: 0.9rem 1rem;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    border: 1px solid var(--border);
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.1rem 1.3rem;
+    margin: 1rem 0;
+  }
+  .tag {
+    display: inline-block;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    margin-right: 0.4rem;
+  }
+  table { width: 100%; border-collapse: collapse; margin: 0.8rem 0; font-size: 0.92rem; }
+  th, td { text-align: left; padding: 0.5rem 0.6rem; border: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--accent-soft); color: var(--accent); }
+  .checklist { list-style: none; padding-left: 0; }
+  .checklist li {
+    display: flex;
+    gap: 0.6rem;
+    align-items: flex-start;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin: 0.4rem 0;
+    background: var(--card);
+  }
+  .box {
+    flex: 0 0 auto;
+    width: 1.05rem;
+    height: 1.05rem;
+    border-radius: 4px;
+    border: 2px solid var(--muted);
+    margin-top: 0.15rem;
+  }
+  .checklist li.done .box { background: var(--done); border-color: var(--done); }
+  .checklist li.done { opacity: 0.7; }
+  .checklist li.done .box::after { content: "✓"; display:block; color:#fff; font-size:0.75rem; text-align:center; line-height:0.95rem; }
+  .status { font-weight: 600; font-size: 0.78rem; padding: 0.1rem 0.5rem; border-radius: 999px; white-space: nowrap; }
+  .status.done { color: var(--done); background: var(--done-soft); }
+  .status.blocked { color: var(--warn); background: var(--warn-soft); }
+  .status.next { color: var(--accent); background: var(--accent-soft); }
+  .status.todo { color: var(--muted); background: var(--code-bg); }
+  .note {
+    border-left: 3px solid var(--accent);
+    background: var(--accent-soft);
+    padding: 0.7rem 1rem;
+    border-radius: 0 8px 8px 0;
+    margin: 1rem 0;
+    font-size: 0.94rem;
+  }
+  .warn-note {
+    border-left: 3px solid var(--warn);
+    background: var(--warn-soft);
+    padding: 0.7rem 1rem;
+    border-radius: 0 8px 8px 0;
+    margin: 1rem 0;
+    font-size: 0.94rem;
+  }
+  footer {
+    margin-top: 3rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+</style>
+</head>
+<body>
+
+<h1>Person C (Bimochan) — Completion Checklist</h1>
+<p class="subtitle">Nepali Fuzzy Phonemes — where the whole project stands, and exactly what's left on my slice (fuzzy / uncertainty-aware phoneme classification) to close it out.</p>
+
+<h2>1. Team status at a glance</h2>
+<table>
+<tr><th>Person</th><th>Role</th><th>Contribution</th><th>Status</th></tr>
+<tr>
+  <td><strong>Person A — Utsab</strong></td>
+  <td>Heavy processing: corpus stats, G2P, phoneme DB, similar-word lookup, ASR pass</td>
+  <td><code>person1/</code> — word/phoneme DB, similar-words artifacts, Whisper ASR outputs, EDA scripts + figures</td>
+  <td><span class="status done">MERGED — PR #3</span></td>
+</tr>
+<tr>
+  <td><strong>Person B — Sushank</strong></td>
+  <td>Coursework assignment</td>
+  <td><code>Assignment/Advanced_Maching_Learning_Assign.ipynb</code></td>
+  <td><span class="status done">MERGED — PR #2</span></td>
+</tr>
+<tr>
+  <td><strong>Person C — Bimochan (me)</strong></td>
+  <td>Fuzzy-logic + Gaussian Process Classification for confusable phoneme pairs</td>
+  <td><code>Proposal/</code> — plan + pilot pair list + 10 clips for one pair; feature extraction and classifiers not yet built</td>
+  <td><span class="status next">IN PROGRESS — nothing merged as a PR yet</span></td>
+</tr>
+</table>
+
+<div class="note">
+<strong>What Person A's merge unlocks for me:</strong> <code>person1/db/phoneme_db.pkl</code> (word→IPA→PanPhon features), <code>person1/artifacts/similar_words.tsv</code>, and <code>person1/asr/*</code> (Whisper hypotheses + word-level IPA alignment) are now on <code>main</code>. My GPC pipeline can start reading these instead of waiting.
+</div>
+<div class="warn-note">
+<strong>Blocker to note:</strong> Person A's own README marks <code>P1.10</code> (ASR alignment → confusion priors) and <code>P1.11</code> (motivation stats) as still <strong>TODO</strong> — <code>confusion_priors.tsv</code> doesn't exist yet. That only affects my <em>stretch</em> goal (feeding GPC uncertainty into a downstream disambiguation test); everything else in my plan is unblocked.
+</div>
+
+<h2>2. What's already done on my part</h2>
+<ul class="checklist">
+  <li class="done"><div class="box"></div><div>Solo experiment plan written (<code>Proposal/bimochan.html</code>) — scope, pipeline sketch, tooling, done/good/stretch bar.</div></li>
+  <li class="done"><div class="box"></div><div>Pilot pair list picked — 8 pairs across all 4 contrast types (aspirated/unaspirated, retroflex/dental, vowel length, sibilant).</div></li>
+  <li class="done"><div class="box"></div><div>Clip naming convention + folder scaffolding for all 8 pairs (<code>Proposal/clips/&lt;pair_id&gt;/</code>).</div></li>
+  <li class="done"><div class="box"></div><div>First pair (ब/भ, <code>ba_bha</code>) recorded — 10 clips in.</div></li>
+</ul>
+
+<h2>3. Checklist — what's left to complete the project</h2>
+<ol class="checklist">
+  <li><span class="status next">NEXT</span><div>Record/collect clips for the remaining 7 pilot pairs (<code>ka_kha</code>, <code>tta_ta</code>, <code>dda_da</code>, <code>i_ii</code>, <code>u_uu</code>, <code>sha_sa</code>, <code>ssha_sa</code>) — currently only <code>.gitkeep</code> placeholders.</div></li>
+  <li><span class="status todo">TODO</span><div>QC + normalize clips: 16kHz mono, trim silence, dedupe.</div></li>
+  <li><span class="status todo">TODO</span><div>Confirm phoneme labels per clip with a rule-based Devanagari G2P converter — can likely reuse Person A's <code>person1/scripts/phonemize.py</code> + <code>ipa_utils.py</code> instead of building from scratch.</div></li>
+  <li><span class="status todo">TODO</span><div>Run forced alignment for phoneme-level segment boundaries (Montreal Forced Aligner, or manual boundary-marking fallback if no Nepali acoustic model is available).</div></li>
+  <li><span class="status todo">TODO</span><div>Extract features per segment: MFCCs + deltas, formants (F1–F3), VOT, duration, pitch/energy contour. Cache to a single feature manifest.</div></li>
+  <li><span class="status todo">TODO</span><div>Train the hard-boundary baseline (Random Forest) per pair.</div></li>
+  <li><span class="status todo">TODO</span><div>Train fuzzy c-means / fuzzy k-NN on the same features.</div></li>
+  <li><span class="status todo">TODO</span><div>Train Gaussian Process Classification per pair (GPflow, RBF kernel, Laplace approximation) — the core deliverable.</div></li>
+  <li><span class="status todo">TODO</span><div>Collect a small human-ambiguity rating set (2–3 raters, forced-choice + confidence) on the pilot pairs for a calibration target.</div></li>
+  <li><span class="status todo">TODO</span><div>Compare baseline vs. fuzzy vs. GPC on accuracy, and GPC posterior variance vs. human disagreement (the calibration check).</div></li>
+  <li><span class="status todo">TODO</span><div>Write up pilot results (accuracy, F1, ECE, confusion matrix) — this is what gets handed off for integration.</div></li>
+  <li><span class="status blocked">STRETCH / BLOCKED</span><div>Feed GPC uncertainty scores into a toy downstream disambiguation test — blocked until Person A finishes <code>P1.10</code>/<code>P1.11</code> (confusion priors).</div></li>
+  <li><span class="status todo">TODO</span><div>Fix the output schema (<code>pair_id, predicted_label, posterior_probability, posterior_variance, fuzzy_membership_score</code>) so it plugs into the shared pipeline without a rewrite.</div></li>
+  <li><span class="status todo">TODO</span><div>Open a PR merging this work into <code>main</code> once the pilot chain runs end-to-end (matches how Person A's and Person B's work landed).</div></li>
+</ol>
+
+<h2>4. Pilot pair list (reference)</h2>
+<table>
+<tr><th>Contrast type</th><th>Pair</th><th>Feature focus</th><th>Clips</th></tr>
+<tr><td>Aspirated vs unaspirated</td><td>ब / भ</td><td>VOT</td><td><span class="status done">10 recorded</span></td></tr>
+<tr><td>Aspirated vs unaspirated</td><td>क / ख</td><td>VOT</td><td><span class="status todo">none yet</span></td></tr>
+<tr><td>Retroflex vs dental</td><td>ट / त</td><td>Formant transitions (F2/F3)</td><td><span class="status todo">none yet</span></td></tr>
+<tr><td>Retroflex vs dental</td><td>ड / द</td><td>Formant transitions</td><td><span class="status todo">none yet</span></td></tr>
+<tr><td>Vowel length</td><td>इ / ई</td><td>Duration</td><td><span class="status todo">none yet</span></td></tr>
+<tr><td>Vowel length</td><td>उ / ऊ</td><td>Duration</td><td><span class="status todo">none yet</span></td></tr>
+<tr><td>Sibilant merger</td><td>श / स</td><td>Spectral centroid</td><td><span class="status todo">none yet</span></td></tr>
+<tr><td>Sibilant merger</td><td>ष / स</td><td>Spectral centroid</td><td><span class="status todo">none yet</span></td></tr>
+</table>
+
+<h2>5. Definition of done</h2>
+<div class="card">
+  <p><strong>Minimum:</strong> baseline vs. GPC comparison on the 8 pilot pairs, with accuracy + a calibration plot, reproducible from a single script.</p>
+  <p><strong>Good:</strong> the above plus fuzzy-logic as a third comparison arm, and the human-ambiguity correlation check actually run.</p>
+  <p><strong>Stretch:</strong> GPC uncertainty scores feeding a toy downstream disambiguation test (needs Person A's confusion priors first).</p>
+</div>
+
+<h2>6. Repo context</h2>
+<ul>
+  <li><a href="https://github.com/Rbimochan/Nepali-Fuzzy-Phonemes/pull/2">PR #2</a> — Sushank's assignment, merged.</li>
+  <li><a href="https://github.com/Rbimochan/Nepali-Fuzzy-Phonemes/pull/3">PR #3</a> — Utsab's heavy-processing pipeline, merged.</li>
+  <li><code>Proposal/bimochan.html</code> — my original solo plan (this file tracks progress against it).</li>
+  <li><code>Proposal/Nepali_Fuzzy_Phonemes_Research_Proposal.md</code> — full project proposal.</li>
+  <li><code>person1/README.md</code> — Person A's scope, status, and the data schema my pipeline should read from.</li>
+</ul>
+
+<footer>
+Bimochan Kunwar — Nepali Fuzzy Phonemes — Person C completion checklist, generated against repo state as of the PR #2 and PR #3 merges.
+</footer>
+
+</body>
+</html>
