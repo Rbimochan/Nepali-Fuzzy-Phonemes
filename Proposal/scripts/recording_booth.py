@@ -22,31 +22,54 @@ import streamlit.components.v1 as components
 from streamlit_mic_recorder import mic_recorder
 
 # streamlit-mic-recorder always captures from the OS/browser's default input
-# device (no per-recording device selection). This widget lets you see every
-# input device the browser can see and preview its live level, so you can
-# confirm the right mic is active before recording — to actually switch
-# which one gets used, change the *system* default input device (macOS:
-# System Settings > Sound > Input) and refresh the page.
+# device (no per-recording device selection). This widget is a monitor only —
+# it never records or saves anything — so you can confirm a specific mic
+# (e.g. a wireless lavalier) is actually picking up your voice before
+# recording for real below. It auto-selects any device whose name suggests
+# a wireless/lavalier mic. To make the recorder below actually use that
+# device, set it as the *system* default input (macOS: System Settings >
+# Sound > Input) and refresh the page — the picker here can preview any
+# device, but capture always follows the OS default.
 MIC_PICKER_HTML = """
 <div id="mic-picker" style="font-family:-apple-system,sans-serif;">
-  <select id="mic-select" style="width:100%;padding:0.4rem;border-radius:6px;
+  <select id="mic-select" style="width:100%;padding:0.5rem;border-radius:6px;
     border:1px solid #444;background:#1b1f21;color:#eee;font-size:0.85rem;">
     <option>Requesting microphone permission…</option>
   </select>
-  <div style="margin-top:0.5rem;height:10px;border-radius:999px;background:#20241f;overflow:hidden;">
-    <div id="mic-level" style="height:100%;width:0%;background:#6bc79a;transition:width 0.05s linear;"></div>
+
+  <div style="margin-top:0.6rem;border:1px solid #2c3230;border-radius:8px;
+    background:#0f1213;padding:0.4rem;">
+    <canvas id="mic-wave" style="width:100%;height:70px;display:block;"></canvas>
   </div>
-  <div id="mic-status" style="margin-top:0.3rem;font-size:0.75rem;color:#9aa39c;">Speak to test the level.</div>
+
+  <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;">
+    <span style="font-size:0.7rem;color:#9aa39c;width:2.2rem;">peak</span>
+    <div style="flex:1;height:8px;border-radius:999px;background:#20241f;overflow:hidden;">
+      <div id="mic-level" style="height:100%;width:0%;background:#6bc79a;transition:width 0.05s linear;"></div>
+    </div>
+  </div>
+
+  <div id="mic-status" style="margin-top:0.4rem;font-size:0.78rem;color:#9aa39c;">
+    Monitor only — nothing is recorded or saved here. Speak into the mic to test it.
+  </div>
 </div>
 <script>
 (async function () {
   const select = document.getElementById("mic-select");
   const levelBar = document.getElementById("mic-level");
   const status = document.getElementById("mic-status");
+  const canvas = document.getElementById("mic-wave");
+  const ctx2d = canvas.getContext("2d");
   let currentStream = null;
+  let rafId = null;
 
   function stopStream() {
+    if (rafId) cancelAnimationFrame(rafId);
     if (currentStream) currentStream.getTracks().forEach(t => t.stop());
+  }
+
+  function looksLikeLavalier(label) {
+    return /lavalier|lapel|wireless|lav\\b/i.test(label);
   }
 
   async function listDevices() {
@@ -64,39 +87,70 @@ MIC_PICKER_HTML = """
         opt.textContent = d.label || ("Microphone " + (i + 1));
         select.appendChild(opt);
       });
-      startMeter(select.value);
+      const lav = inputs.find(d => looksLikeLavalier(d.label));
+      if (lav) {
+        select.value = lav.deviceId;
+        status.textContent = "Auto-selected \\"" + (lav.label || "wireless mic") + "\\" — looks like your lavalier.";
+      }
+      startMonitor(select.value);
     } catch (e) {
       select.innerHTML = "<option>Could not list devices</option>";
       status.textContent = String(e);
     }
   }
 
-  async function startMeter(deviceId) {
+  async function startMonitor(deviceId) {
     stopStream();
     try {
       const constraints = { audio: deviceId ? { deviceId: { exact: deviceId } } : true };
       currentStream = await navigator.mediaDevices.getUserMedia(constraints);
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const source = ctx.createMediaStreamSource(currentStream);
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 256;
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioCtx.createMediaStreamSource(currentStream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 1024;
       source.connect(analyser);
-      const data = new Uint8Array(analyser.frequencyBinCount);
-      status.textContent = "This is a preview only — actual recording below uses your system default input.";
+      const timeData = new Uint8Array(analyser.frequencyBinCount);
+
+      function resizeCanvas() {
+        canvas.width = canvas.clientWidth * devicePixelRatio;
+        canvas.height = canvas.clientHeight * devicePixelRatio;
+      }
+      resizeCanvas();
+      window.addEventListener("resize", resizeCanvas);
+
       (function loop() {
-        analyser.getByteTimeDomainData(data);
-        let sum = 0;
-        for (let i = 0; i < data.length; i++) { const v = (data[i] - 128) / 128; sum += v * v; }
-        const rms = Math.sqrt(sum / data.length);
+        rafId = requestAnimationFrame(loop);
+        analyser.getByteTimeDomainData(timeData);
+
+        const w = canvas.width, h = canvas.height;
+        ctx2d.clearRect(0, 0, w, h);
+        ctx2d.strokeStyle = "#6bc79a";
+        ctx2d.lineWidth = 2 * devicePixelRatio;
+        ctx2d.beginPath();
+        const sliceWidth = w / timeData.length;
+        let x = 0;
+        let sumSq = 0;
+        for (let i = 0; i < timeData.length; i++) {
+          const v = (timeData[i] - 128) / 128;
+          sumSq += v * v;
+          const y = (v * 0.5 + 0.5) * h;
+          if (i === 0) ctx2d.moveTo(x, y); else ctx2d.lineTo(x, y);
+          x += sliceWidth;
+        }
+        ctx2d.stroke();
+
+        const rms = Math.sqrt(sumSq / timeData.length);
         levelBar.style.width = Math.min(100, rms * 300) + "%";
-        requestAnimationFrame(loop);
       })();
     } catch (e) {
       status.textContent = "Mic preview unavailable: " + e.message;
     }
   }
 
-  select.addEventListener("change", () => startMeter(select.value));
+  select.addEventListener("change", () => {
+    startMonitor(select.value);
+    status.textContent = "Monitor only — nothing is recorded or saved here.";
+  });
 
   try {
     // Trigger a permission prompt so device labels are populated.
@@ -240,8 +294,8 @@ st.markdown(f"**{item['romanized']}**{meaning}")
 target_path = clip_path(item)
 st.code(str(target_path.relative_to(REPO_ROOT)), language=None)
 
-with st.expander("🎚️ Mic input", expanded=False):
-    components.html(MIC_PICKER_HTML, height=90)
+with st.expander("🎚️ Mic input monitor", expanded=True):
+    components.html(MIC_PICKER_HTML, height=200)
 
 audio = mic_recorder(start_prompt="🔴 Record", stop_prompt="⏹ Stop", key=f"rec_{st.session_state.idx}")
 
