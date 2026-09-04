@@ -223,38 +223,55 @@
 <strong>Honest read of the numbers:</strong> baseline is consistently at or below chance (0.50) and fuzzy c-means consistently above it across all 8 pairs — that pattern is suspicious, not reassuring. With n=10 and 1 speaker, leave-one-out variance is huge, and fuzzy c-means's unsupervised clustering can look artificially good if the two classes happen to separate on a feature unrelated to the actual phoneme contrast (e.g. by recording order or a subtle mic-level drift). <strong>Do not present these numbers as "fuzzy beats the baseline" without more speakers</strong> — that conclusion needs to survive a second speaker before it means anything. GPC still shows near-random performance on most pairs (posterior likely still uncertain at this sample size).
 </div>
 
-<h2>4. Checklist — what's left to complete the project</h2>
-<ol class="checklist">
-  <li><span class="status next">NEXT</span><div>Add a second (and ideally third) speaker across all 8 pairs — the single biggest thing that would make these numbers trustworthy. 1 speaker means every "pattern" above could just be speaker-specific quirks.</div></li>
-  <li><span class="status todo">TODO</span><div>Confirm phoneme labels per clip with a rule-based Devanagari G2P converter — can likely reuse Person A's <code>person1/scripts/phonemize.py</code> + <code>ipa_utils.py</code> instead of building from scratch.</div></li>
-  <li><span class="status todo">TODO</span><div>Run forced alignment for phoneme-level segment boundaries (Montreal Forced Aligner, or manual boundary-marking fallback if no Nepali acoustic model is available) — current features are whole-clip, not segment-level.</div></li>
-  <li><span class="status todo">TODO</span><div>Add real formant (F1–F3) extraction and a proper VOT measurement once segment boundaries exist — current VOT is an RMS-onset proxy, not true VOT.</div></li>
-  <li><span class="status todo">TODO</span><div>Collect a small human-ambiguity rating set (2–3 raters, forced-choice + confidence) on the pilot pairs for a calibration target.</div></li>
-  <li><span class="status todo">TODO</span><div>Once more speakers exist, re-run baseline vs. fuzzy vs. GPC and check GPC posterior variance against human disagreement (the calibration check) — the comparison scripts exist now, this is re-running them on real-sized data.</div></li>
-  <li><span class="status todo">TODO</span><div>Write up pilot results (accuracy, F1, ECE, confusion matrix) — this is what gets handed off for integration. Flag the suspicious baseline-vs-fuzzy pattern explicitly rather than presenting it as a finding.</div></li>
-  <li><span class="status blocked">STRETCH / BLOCKED</span><div>Feed GPC uncertainty scores into a toy downstream disambiguation test — blocked until Person A finishes <code>P1.10</code>/<code>P1.11</code> (confusion priors).</div></li>
-  <li><span class="status done">DONE</span><div>Output schema fixed: GPC predictions written as <code>pair_id, file, word, true_label, predicted_label, posterior_probability, posterior_variance</code> (<code>Proposal/artifacts/gpc_predictions.csv</code>).</div></li>
-  <li><span class="status todo">TODO</span><div>Open a PR merging this work into <code>main</code> once at least a second speaker's data is in (matches how Person A's and Person B's work landed).</div></li>
-</ol>
-
-<h2>5. Definition of done</h2>
-<div class="card">
-  <p><strong>Minimum:</strong> baseline vs. GPC comparison on the 8 pilot pairs, with accuracy + a calibration plot, reproducible from a single script.</p>
-  <p><strong>Good:</strong> the above plus fuzzy-logic as a third comparison arm, and the human-ambiguity correlation check actually run.</p>
-  <p><strong>Stretch:</strong> GPC uncertainty scores feeding a toy downstream disambiguation test (needs Person A's confusion priors first).</p>
+<div class="note">
+<strong>This whole section is the pilot, not the deliverable.</strong> The pilot used a different feature set (MFCC/centroid/duration/VOT-proxy, sklearn) than what the locked proposal actually specifies. See §4 below for the real build against the proposal's spec.
 </div>
 
-<h2>6. Repo context</h2>
+<h2>4. Real proposal-spec implementation (GPy, per §4.5–4.6 of the locked paper)</h2>
+<p>After the pilot, went back to the actual locked proposal (<code>Fuzzy_Phonemes_Nepali_ASR_Disambiguation.pdf</code>) and built toward its real spec instead of the pilot's stand-in feature set. Full plan in <a href="https://github.com/Rbimochan/Nepali-Fuzzy-Phonemes/blob/main/Proposal/GP_Classification_Implementation.md"><code>Proposal/GP_Classification_Implementation.md</code></a>.</p>
+<ul class="checklist">
+  <li class="done"><div class="box"></div><div>Implementation spec written — the exact 8-feature vector <code>[VOT, F0_pert, H1H2, AspDur, GMM, DTW, Fuzzy, Topic]</code>, the evidence-table handoff contract expected from Utsab/Sushank's lanes, and an explicit note that the proposal PDF's headline numbers (23.7% error reduction, Brier=0.072) are pre-code illustrative targets, not results to reuse.</div></li>
+  <li class="done"><div class="box"></div><div><code>Proposal/scripts/gp_classifier_gpy.py</code> — real <code>GPy</code> <code>GPClassification</code> (Bernoulli/probit/EP, not sklearn's stand-in) and <code>GPRegression</code>+threshold, both with RBF and Matérn 5/2 kernels, stratified k-fold CV, accuracy/macro-F1/Brier/ECE/confusion matrix. Runs against synthetic data matching the real handoff schema, or a real CSV via <code>--evidence-table</code> — both paths verified. Found and worked around a real GPy bug: <code>.predict()</code>'s variance comes back <code>nan</code> for classification (a quadrature issue in this version); derives <code>posterior_variance</code> as <code>p(1-p)</code> from the (correct) predictive mean instead.</div></li>
+  <li class="done"><div class="box"></div><div><code>Proposal/scripts/ablation_grid.py</code> — E0–E7 per the abstract's "eight experimental configurations": three toggleable branches (<code>general</code>=GMM+DTW, <code>cue</code>=VOT/F0_pert/H1H2/AspDur/Fuzzy, <code>context</code>=Topic), 2³=8 configs, E0 as a majority-class baseline. On synthetic data, E7 (full hybrid) beats E0 on average across all 8 pairs — the expected shape, not yet meaningful until real evidence data lands.</div></li>
+  <li class="done"><div class="box"></div><div>Kernel-robustness check — reran the full ablation grid with Matérn 5/2 and compared against RBF (<code>Proposal/artifacts/ablation_results_kernel_comparison.csv</code>). Same E0→E7 ranking under both kernels (E7 accuracy 0.747 RBF vs. 0.759 Matérn52) — the branch-contribution pattern isn't an RBF-specific artifact.</div></li>
+  <li class="done"><div class="box"></div><div>Regression-to-classification arm implemented per §4.5.3, but flagged as an open question: the proposal doesn't fully define the regression target <code>y</code>. Current implementation trains on the same {0,1} labels as the classifier — needs team confirmation before treating as final.</div></li>
+</ul>
+<div class="warn-note">
+<strong>Still fully blocked on real data:</strong> everything above runs on synthetic placeholder evidence, not real GMM/DTW/Fuzzy/Topic scores or real VOT/F0pert/H1H2/AspDur measurements. Nothing here is a result yet — it's proof the modeling/evaluation code is correct and ready for when Utsab's and Sushank's lanes hand off real data.
+</div>
+
+<h2>5. Checklist — what's left to complete the project</h2>
+<ol class="checklist">
+  <li><span class="status next">NEXT</span><div>Add a second (and ideally third) speaker across all 8 pairs to the <em>pilot</em> — the single biggest thing that would make its numbers trustworthy. 1 speaker means every "pattern" in §3 could just be speaker-specific quirks.</div></li>
+  <li><span class="status blocked">BLOCKED (Utsab)</span><div>Real VOT/F0pert/H1H2/AspDur extraction per clip — the GPy classifier and ablation grid are ready to consume this the moment it exists.</div></li>
+  <li><span class="status blocked">BLOCKED (Sushank)</span><div>Real GMM/DTW/Fuzzy/Topic columns in the Candidate × Occurrence Evidence Table.</div></li>
+  <li><span class="status todo">TODO</span><div>Resolve the regression-target <code>y</code> open question with the team (§4 above).</div></li>
+  <li><span class="status todo">TODO</span><div>Confirm phoneme labels per clip with a rule-based Devanagari G2P converter — can likely reuse Person A's <code>person1/scripts/phonemize.py</code> + <code>ipa_utils.py</code> instead of building from scratch.</div></li>
+  <li><span class="status todo">TODO</span><div>Once Utsab's and Sushank's data land: swap synthetic evidence for real, rerun <code>gp_classifier_gpy.py</code> and <code>ablation_grid.py</code>, and this is when §6 of the paper gets filled in for real — with actual numbers, not the pre-code illustrative ones currently in the PDF.</div></li>
+  <li><span class="status todo">TODO</span><div>Collect a small human-ambiguity rating set (2–3 raters, forced-choice + confidence) for the calibration check against GP posterior variance.</div></li>
+  <li><span class="status blocked">STRETCH / BLOCKED</span><div>Feed GPC uncertainty scores into a toy downstream disambiguation test.</div></li>
+</ol>
+
+<h2>6. Definition of done</h2>
+<div class="card">
+  <p><strong>Minimum:</strong> real GPy classifier run on real evidence data for the 8 pilot pairs, with accuracy + calibration (Brier/ECE), reproducible from <code>gp_classifier_gpy.py</code>.</p>
+  <p><strong>Good:</strong> the above plus the full E0–E7 ablation grid on real data, and the human-ambiguity correlation check actually run.</p>
+  <p><strong>Stretch:</strong> GP uncertainty scores feeding a toy downstream disambiguation test.</p>
+</div>
+
+<h2>7. Repo context</h2>
 <ul>
+  <li><a href="https://github.com/Rbimochan/Nepali-Fuzzy-Phonemes/pull/5">PR #5</a> — this branch (pilot pipeline + GPy implementation), merged into <code>main</code>.</li>
   <li><a href="https://github.com/Rbimochan/Nepali-Fuzzy-Phonemes/pull/2">PR #2</a> — Sushank's assignment, merged.</li>
   <li><a href="https://github.com/Rbimochan/Nepali-Fuzzy-Phonemes/pull/3">PR #3</a> — Utsab's heavy-processing pipeline, merged.</li>
   <li><code>Proposal/bimochan.html</code> — my original solo plan (this file tracks progress against it).</li>
-  <li><code>Proposal/Nepali_Fuzzy_Phonemes_Research_Proposal.md</code> — full project proposal.</li>
+  <li><code>Proposal/Nepali_Fuzzy_Phonemes_Research_Proposal.md</code> — full project proposal (matches the locked <code>Fuzzy_Phonemes_Nepali_ASR_Disambiguation.pdf</code>).</li>
+  <li><code>Proposal/GP_Classification_Implementation.md</code> — the real spec + build plan for §4 above.</li>
   <li><code>person1/README.md</code> — Person A's scope, status, and the data schema my pipeline should read from.</li>
 </ul>
 
 <footer>
-Bimochan Kunwar — Nepali Fuzzy Phonemes — Person C completion checklist, updated after all 8 pilot pairs were recorded (1 speaker, ~10 clips each).
+Bimochan Kunwar — Nepali Fuzzy Phonemes — Person C completion checklist, updated after building the real GPy classifier + E0–E7 ablation grid against the locked proposal's spec.
 </footer>
 
 </body>
