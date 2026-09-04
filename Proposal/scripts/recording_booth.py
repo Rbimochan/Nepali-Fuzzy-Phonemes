@@ -1,0 +1,643 @@
+"""Local recording booth for the fuzzy-phoneme pilot dataset.
+
+A small Streamlit app that walks through the pilot word list, records
+each word via the browser mic (works reliably in Safari because a
+localhost Streamlit server is a secure context, unlike an embedded
+iframe), and saves clips directly into Proposal/clips/<pair_id>/ using
+the project's filename convention.
+
+Usage:
+    pip install -r Proposal/scripts/requirements.txt
+    streamlit run Proposal/scripts/recording_booth.py
+
+Then open the local URL it prints (usually http://localhost:8501) in
+Safari/Chrome and record. Files land directly in Proposal/clips/.
+"""
+from __future__ import annotations
+
+import base64
+import io
+import re
+import wave
+from pathlib import Path
+
+import numpy as np
+import streamlit as st
+import streamlit.components.v1 as components
+from streamlit_mic_recorder import mic_recorder
+
+# streamlit-mic-recorder always captures from the OS/browser's default input
+# device (no per-recording device selection). This widget is a monitor only —
+# it never records or saves anything — so you can confirm a specific mic
+# (e.g. a wireless lavalier) is actually picking up your voice before
+# recording for real below. It auto-selects any device whose name suggests
+# a wireless/lavalier mic. To make the recorder below actually use that
+# device, set it as the *system* default input (macOS: System Settings >
+# Sound > Input) and refresh the page — the picker here can preview any
+# device, but capture always follows the OS default.
+#
+# IMPORTANT: this monitor only opens the mic stream while explicitly
+# "testing" (Test/Stop button), and always releases it afterwards. Some
+# devices — a wireless lavalier's USB/Bluetooth receiver especially — only
+# allow one open capture session at a time, so an always-on preview stream
+# would fight the recorder below for the device and make Record silently
+# fail. Always press Stop test before recording for real.
+MIC_PICKER_HTML = """
+<div id="mic-picker" style="font-family:-apple-system,sans-serif;">
+  <select id="mic-select" style="width:100%;padding:0.5rem;border-radius:6px;
+    border:1px solid #444;background:#1b1f21;color:#eee;font-size:0.85rem;">
+    <option>Requesting microphone permission…</option>
+  </select>
+
+  <div style="margin-top:0.6rem;border:1px solid #2c3230;border-radius:8px;
+    background:#0f1213;padding:0.4rem;">
+    <canvas id="mic-wave" style="width:100%;height:70px;display:block;"></canvas>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;">
+    <span style="font-size:0.7rem;color:#9aa39c;width:2.2rem;">peak</span>
+    <div style="flex:1;height:8px;border-radius:999px;background:#20241f;overflow:hidden;">
+      <div id="mic-level" style="height:100%;width:0%;background:#6bc79a;transition:width 0.05s linear;"></div>
+    </div>
+    <button id="mic-toggle" style="padding:0.35rem 0.8rem;border-radius:999px;border:1px solid #6bc79a;
+      background:transparent;color:#6bc79a;font-size:0.78rem;font-weight:600;cursor:pointer;white-space:nowrap;">
+      ▶ Test mic
+    </button>
+  </div>
+
+  <div id="mic-status" style="margin-top:0.4rem;font-size:0.78rem;color:#9aa39c;">
+    Monitor is off — mic isn't in use. Press "Test mic" to check it, "Stop test" before recording for real.
+  </div>
+</div>
+<script>
+(async function () {
+  const select = document.getElementById("mic-select");
+  const levelBar = document.getElementById("mic-level");
+  const status = document.getElementById("mic-status");
+  const canvas = document.getElementById("mic-wave");
+  const toggleBtn = document.getElementById("mic-toggle");
+  const ctx2d = canvas.getContext("2d");
+  let currentStream = null;
+  let rafId = null;
+  let audioCtx = null;
+  let monitoring = false;
+
+  function stopMonitor(reason) {
+    monitoring = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+    if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null; }
+    if (audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null; }
+    ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+    levelBar.style.width = "0%";
+    toggleBtn.textContent = "▶ Test mic";
+    if (reason) status.textContent = reason;
+  }
+
+  function looksLikeLavalier(label) {
+    return /lavalier|lapel|wireless|lav\\b/i.test(label);
+  }
+
+  async function listDevices() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const inputs = devices.filter(d => d.kind === "audioinput");
+      select.innerHTML = "";
+      if (!inputs.length) {
+        select.innerHTML = "<option>No microphones found</option>";
+        return;
+      }
+      inputs.forEach((d, i) => {
+        const opt = document.createElement("option");
+        opt.value = d.deviceId;
+        opt.textContent = d.label || ("Microphone " + (i + 1));
+        select.appendChild(opt);
+      });
+      const lav = inputs.find(d => looksLikeLavalier(d.label));
+      if (lav) {
+        select.value = lav.deviceId;
+        status.textContent = "Auto-selected \\"" + (lav.label || "wireless mic") + "\\" — looks like your lavalier. Press \\"Test mic\\" to check it.";
+      }
+    } catch (e) {
+      select.innerHTML = "<option>Could not list devices</option>";
+      status.textContent = String(e);
+    }
+  }
+
+  async function startMonitor() {
+    try {
+      const deviceId = select.value;
+      const constraints = { audio: deviceId ? { deviceId: { exact: deviceId } } : true };
+      currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioCtx.createMediaStreamSource(currentStream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 1024;
+      source.connect(analyser);
+      const timeData = new Uint8Array(analyser.frequencyBinCount);
+
+      canvas.width = canvas.clientWidth * devicePixelRatio;
+      canvas.height = canvas.clientHeight * devicePixelRatio;
+
+      monitoring = true;
+      toggleBtn.textContent = "■ Stop test";
+      status.textContent = "Testing — nothing is recorded or saved. Speak into the mic.";
+
+      (function loop() {
+        if (!monitoring) return;
+        rafId = requestAnimationFrame(loop);
+        analyser.getByteTimeDomainData(timeData);
+
+        const w = canvas.width, h = canvas.height;
+        ctx2d.clearRect(0, 0, w, h);
+        ctx2d.strokeStyle = "#6bc79a";
+        ctx2d.lineWidth = 2 * devicePixelRatio;
+        ctx2d.beginPath();
+        const sliceWidth = w / timeData.length;
+        let x = 0;
+        let sumSq = 0;
+        for (let i = 0; i < timeData.length; i++) {
+          const v = (timeData[i] - 128) / 128;
+          sumSq += v * v;
+          const y = (v * 0.5 + 0.5) * h;
+          if (i === 0) ctx2d.moveTo(x, y); else ctx2d.lineTo(x, y);
+          x += sliceWidth;
+        }
+        ctx2d.stroke();
+
+        const rms = Math.sqrt(sumSq / timeData.length);
+        levelBar.style.width = Math.min(100, rms * 300) + "%";
+      })();
+    } catch (e) {
+      status.textContent = "Mic test unavailable: " + e.message;
+    }
+  }
+
+  toggleBtn.addEventListener("click", () => {
+    if (monitoring) {
+      stopMonitor("Stopped — mic is free for recording.");
+    } else {
+      startMonitor();
+    }
+  });
+
+  select.addEventListener("change", () => {
+    if (monitoring) startMonitor(); // restart on the newly chosen device
+  });
+
+  // Safety net: never leave the mic open if the tab/frame goes away or hides.
+  window.addEventListener("beforeunload", () => stopMonitor());
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) stopMonitor("Stopped (tab hidden) — mic is free.");
+  });
+
+  // No automatic getUserMedia call here — Streamlit reruns this component's
+  // iframe on nearly every interaction, and each reload counted as a fresh
+  // permission request in Safari, producing a popup almost every click.
+  // Device labels stay generic ("Microphone 1", etc.) until you press
+  // "Test mic" once, which is the only thing that now asks for permission.
+  await listDevices();
+  navigator.mediaDevices.ondevicechange = listDevices;
+})();
+</script>
+"""
+
+
+def output_player_html(audio_base64: str, mime: str) -> str:
+    """Playback widget with an output-device (speaker) picker.
+
+    HTMLMediaElement.setSinkId — the API that actually routes playback to a
+    chosen output device — is Chrome/Edge only; Safari has never implemented
+    it. This detects support and says so plainly rather than pretending the
+    picker works everywhere; on Safari the dropdown still lists devices (for
+    reference) but playback always goes through the system default.
+    """
+    return f"""
+<div style="font-family:-apple-system,sans-serif;">
+  <select id="out-select" style="width:100%;padding:0.5rem;border-radius:6px;
+    border:1px solid #444;background:#1b1f21;color:#eee;font-size:0.85rem;">
+    <option>Loading output devices…</option>
+  </select>
+  <audio id="out-audio" controls style="width:100%;margin-top:0.5rem;"
+    src="data:{mime};base64,{audio_base64}"></audio>
+  <div id="out-status" style="margin-top:0.4rem;font-size:0.78rem;color:#9aa39c;"></div>
+</div>
+<script>
+(async function () {{
+  const select = document.getElementById("out-select");
+  const player = document.getElementById("out-audio");
+  const status = document.getElementById("out-status");
+  const canSetSink = typeof player.setSinkId === "function";
+
+  async function listOutputs() {{
+    try {{
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const outputs = devices.filter(d => d.kind === "audiooutput");
+      select.innerHTML = "";
+      if (!outputs.length) {{
+        select.innerHTML = "<option value=''>System default</option>";
+      }} else {{
+        outputs.forEach((d, i) => {{
+          const opt = document.createElement("option");
+          opt.value = d.deviceId;
+          opt.textContent = d.label || ("Output " + (i + 1));
+          select.appendChild(opt);
+        }});
+      }}
+      status.textContent = canSetSink
+        ? "Pick a device, then press play to preview through it."
+        : "This browser (likely Safari) doesn't support choosing an output "
+          + "device from a page — playback always uses your system default "
+          + "output. Change it in System Settings > Sound > Output if needed.";
+    }} catch (e) {{
+      status.textContent = "Could not list output devices: " + e.message;
+    }}
+  }}
+
+  select.addEventListener("change", async () => {{
+    if (!canSetSink) return;
+    try {{
+      await player.setSinkId(select.value);
+      status.textContent = "Routed to \\"" + (select.options[select.selectedIndex].text) + "\\".";
+    }} catch (e) {{
+      status.textContent = "Couldn't switch output: " + e.message;
+    }}
+  }});
+
+  // No priming getUserMedia call here either — this component re-renders
+  // on every take/review, so it was asking for mic permission constantly
+  // just to list *output* devices. Labels may stay blank until permission
+  // has been granted elsewhere (e.g. the mic monitor's "Test mic"); that's
+  // an acceptable tradeoff for not spamming the permission dialog.
+  await listOutputs();
+  navigator.mediaDevices.ondevicechange = listOutputs;
+}})();
+</script>
+"""
+
+
+def wav_signal_stats(wav_bytes: bytes) -> dict | None:
+    """Peak level / duration from real WAV bytes, so 'did it record?' has a
+    concrete answer instead of relying on whether playback happens to work
+    in the browser. Returns None if the bytes aren't parseable as WAV
+    (e.g. output_format is webm, which this can't decode without a codec)."""
+    try:
+        with wave.open(io.BytesIO(wav_bytes), "rb") as w:
+            n_frames = w.getnframes()
+            sample_rate = w.getframerate()
+            sample_width = w.getsampwidth()
+            raw = w.readframes(n_frames)
+    except (wave.Error, EOFError):
+        return None
+
+    if n_frames == 0:
+        return {"duration_s": 0.0, "peak_pct": 0.0, "rms_pct": 0.0, "sample_rate": sample_rate}
+
+    dtype = {1: np.int8, 2: np.int16, 4: np.int32}.get(sample_width, np.int16)
+    samples = np.frombuffer(raw, dtype=dtype).astype(np.float64)
+    full_scale = float(np.iinfo(dtype).max)
+
+    peak = float(np.max(np.abs(samples))) if samples.size else 0.0
+    rms = float(np.sqrt(np.mean(samples**2))) if samples.size else 0.0
+
+    return {
+        "duration_s": n_frames / sample_rate,
+        "peak_pct": 100.0 * peak / full_scale,
+        "rms_pct": 100.0 * rms / full_scale,
+        "sample_rate": sample_rate,
+    }
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+CLIPS_DIR = REPO_ROOT / "Proposal" / "clips"
+
+# pair_id -> (display name, [(romanized, devanagari, label, meaning), ...])
+PAIRS: dict[str, tuple[str, list[tuple[str, str, str, str]]]] = {
+    "ba_bha": ("ब / भ — aspirated vs unaspirated", [
+        ("baani", "बानी", "ba", "habit"), ("bhaani", "भानी", "bha", "—"),
+        ("bar", "बर", "ba", "—"), ("bhar", "भर", "bha", "full"),
+        ("baag", "बाग", "ba", "tiger"), ("bhaag", "भाग", "bha", "part"),
+        ("baala", "बाला", "ba", "—"), ("bhaala", "भाला", "bha", "spear"),
+        ("boot", "बूट", "ba", "boot"), ("bhoot", "भूत", "bha", "ghost"),
+    ]),
+    "ka_kha": ("क / ख — aspirated vs unaspirated", [
+        ("kaam", "काम", "ka", "work"), ("khaam", "खाम", "kha", "envelope"),
+        ("kaaro", "कारो", "ka", "—"), ("khaaro", "खारो", "kha", "—"),
+        ("kaali", "काली", "ka", "black"), ("khaali", "खाली", "kha", "empty"),
+        ("kaan", "कान", "ka", "ear"), ("khaan", "खान", "kha", "mine"),
+        ("kuwa", "कुवा", "ka", "well"), ("khuwa", "खुवा", "kha", "—"),
+    ]),
+    "tta_ta": ("ट / त — retroflex vs dental", [
+        ("ttaaro", "टारो", "tta", "—"), ("taaro", "तारो", "ta", "target"),
+        ("ttaauko", "टाउको", "tta", "head"), ("taauko", "ताउको", "ta", "—"),
+        ("ttikaa", "टीका", "tta", "tika"), ("tikaa", "तीका", "ta", "—"),
+        ("ttol", "टोल", "tta", "neighborhood"), ("tol", "तोल", "ta", "weight"),
+        ("ttaar", "टार", "tta", "—"), ("taar", "तार", "ta", "wire"),
+    ]),
+    "dda_da": ("ड / द — retroflex vs dental", [
+        ("ddaal", "डाल", "dda", "branch"), ("daal", "दाल", "da", "lentils"),
+        ("ddori", "डोरी", "dda", "rope"), ("dori", "दोरी", "da", "—"),
+        ("ddaanda", "डाँडा", "dda", "hill"), ("daant", "दाँत", "da", "tooth"),
+        ("ddar", "डर", "dda", "fear"), ("dar", "दर", "da", "rate"),
+        ("ddaak", "डाक", "dda", "post"), ("daag", "दाग", "da", "stain"),
+    ]),
+    "i_ii": ("इ / ई — vowel length", [
+        ("din", "दिन", "i", "day"), ("deen", "दीन", "ii", "poor"),
+        ("pir", "पिर", "i", "worry"), ("peer", "पीर", "ii", "—"),
+        ("kin", "किन", "i", "why"), ("keen", "कीन", "ii", "—"),
+        ("sima", "सिमा", "i", "—"), ("seemaa", "सीमा", "ii", "border"),
+        ("mil", "मिल", "i", "—"), ("meel", "मील", "ii", "mile"),
+    ]),
+    "u_uu": ("उ / ऊ — vowel length", [
+        ("mul", "मुल", "u", "main"), ("mool", "मूल", "uu", "source"),
+        ("pul", "पुल", "u", "bridge"), ("pool", "पूल", "uu", "—"),
+        ("sut", "सुत", "u", "—"), ("soot", "सूत", "uu", "thread"),
+        ("bhul", "भुल", "u", "—"), ("bhool", "भूल", "uu", "mistake"),
+        ("dudh", "दुध", "u", "milk"), ("doodh", "दूध", "uu", "—"),
+    ]),
+    "sha_sa": ("श / स — sibilant merger", [
+        ("shaal", "शाल", "sha", "shawl"), ("saal", "साल", "sa", "year"),
+        ("shar", "शर", "sha", "—"), ("sar", "सर", "sa", "sir"),
+        ("shakti", "शक्ति", "sha", "power"), ("sakti", "सक्ति", "sa", "—"),
+        ("aashaa", "आशा", "sha", "hope"), ("aasaa", "आसा", "sa", "—"),
+        ("shahar", "शहर", "sha", "city"), ("sahar", "सहर", "sa", "—"),
+    ]),
+    "ssha_sa": ("ष / स — sibilant merger", [
+        ("ssat", "षट्", "ssha", "—"), ("sat", "सट्", "sa", "—"),
+        ("bhaassaa", "भाषा", "ssha", "language"), ("bhaasaa", "भासा", "sa", "—"),
+        ("doss", "दोष", "ssha", "fault"), ("dos", "दोस", "sa", "—"),
+        ("koss", "कोष", "ssha", "fund"), ("kos", "कोस", "sa", "a distance unit"),
+        ("bissay", "विषय", "ssha", "subject"), ("visay", "विसय", "sa", "—"),
+    ]),
+}
+
+ITEMS = [
+    {"pair_id": pid, "pair_name": name, "romanized": rom, "devanagari": dev,
+     "label": label, "meaning": meaning}
+    for pid, (name, words) in PAIRS.items()
+    for (rom, dev, label, meaning) in words
+]
+
+st.set_page_config(page_title="Phoneme Recording Booth", page_icon="🎙️", layout="centered")
+
+if "idx" not in st.session_state:
+    st.session_state.idx = 0
+
+speaker_raw = st.sidebar.text_input(
+    "Speaker ID", value=st.session_state.get("speaker_raw", ""),
+    placeholder="e.g. spk02",
+    help="Short and anonymized, no spaces — not your real name. "
+         "Gets slugified automatically (lowercase, letters/digits/underscore only).",
+).strip()
+st.session_state.speaker_raw = speaker_raw
+speaker = re.sub(r"[^a-z0-9_]", "", speaker_raw.lower().replace(" ", "_"))
+if speaker_raw and speaker != speaker_raw:
+    st.sidebar.caption(f"Will be saved as: `{speaker}`")
+st.session_state.speaker = speaker
+
+st.sidebar.markdown("---")
+OUTPUT_FORMATS = {
+    "wav": "WAV (uncompressed) — recommended, matches the existing ba_bha clips and "
+           "what extract_features.py expects",
+    "webm": "WebM/Opus (compressed) — smaller files, but NOT what the pipeline reads "
+            "today; you'd need to convert before running extract_features.py",
+}
+output_format = st.sidebar.selectbox(
+    "Output format", options=list(OUTPUT_FORMATS), index=0,
+    format_func=lambda f: f.upper(),
+    help="\n\n".join(f"**{f.upper()}** — {desc}" for f, desc in OUTPUT_FORMATS.items()),
+)
+st.sidebar.caption(OUTPUT_FORMATS[output_format])
+
+
+def clip_path(item: dict) -> Path:
+    sp = speaker or "spkXX"
+    fname = f"{sp}_{item['romanized']}_{item['label']}.{output_format}"
+    return CLIPS_DIR / item["pair_id"] / fname
+
+
+def recorded_set() -> set[str]:
+    # "Done" means *some* speaker has already recorded this word — not
+    # specifically the current Speaker ID field. Otherwise leaving the
+    # field blank, or switching speakers, makes every already-recorded
+    # word look unrecorded again in the "remaining only" filter and
+    # progress count, even though clips for it exist on disk.
+    done = set()
+    for item in ITEMS:
+        pattern = f"*_{item['romanized']}_{item['label']}.*"
+        pair_dir = CLIPS_DIR / item["pair_id"]
+        if pair_dir.is_dir() and any(pair_dir.glob(pattern)):
+            done.add(item["pair_id"] + item["romanized"])
+    return done
+
+
+done = recorded_set()
+
+st.sidebar.progress(len(done) / len(ITEMS) if ITEMS else 0)
+st.sidebar.caption(f"{len(done)} of {len(ITEMS)} recorded")
+
+remaining_only = st.sidebar.checkbox("Show only remaining words", value=True)
+
+st.sidebar.markdown("---")
+for pid, (name, words) in PAIRS.items():
+    pair_words = [
+        (rom, dev, label, meaning) for rom, dev, label, meaning in words
+        if not remaining_only or (pid + rom) not in done
+    ]
+    if not pair_words:
+        continue
+    st.sidebar.markdown(f"**{name}**")
+    for rom, dev, label, meaning in pair_words:
+        key = pid + rom
+        mark = "✅" if key in done else "⬜️"
+        idx = next(i for i, it in enumerate(ITEMS) if it["pair_id"] == pid and it["romanized"] == rom)
+        if st.sidebar.button(f"{mark} {dev}  ·  {rom}", key=f"jump_{key}"):
+            st.session_state.idx = idx
+            st.rerun()
+
+if remaining_only and len(done) == len(ITEMS):
+    st.sidebar.success("Nothing left — everything's recorded!")
+
+
+def item_key(i: int) -> str:
+    return ITEMS[i]["pair_id"] + ITEMS[i]["romanized"]
+
+
+def is_done(i: int) -> bool:
+    return item_key(i) in done
+
+
+def nearest_undone(start: int) -> int:
+    """When remaining_only is on, the current index should never land on an
+    already-recorded word — this finds the closest unrecorded one (forward
+    first, then backward) so 'removed from the portal' actually means the
+    stage never shows them, not just the sidebar list."""
+    if not remaining_only or not is_done(start):
+        return start
+    for i in range(start, len(ITEMS)):
+        if not is_done(i):
+            return i
+    for i in range(start, -1, -1):
+        if not is_done(i):
+            return i
+    return start  # everything done
+
+
+st.session_state.idx = max(0, min(st.session_state.idx, len(ITEMS) - 1))
+st.session_state.idx = nearest_undone(st.session_state.idx)
+item = ITEMS[st.session_state.idx]
+
+st.title("🎙️ Phoneme Recording Booth")
+st.caption("Nepali Fuzzy Phonemes — pilot clip collection (local, saves straight into Proposal/clips/)")
+
+if not speaker:
+    st.warning("Enter a speaker ID in the sidebar before recording.")
+
+st.markdown(f"### {item['pair_name']}")
+st.markdown(
+    f"<div style='font-size:4rem; font-weight:700; margin:0.2rem 0;'>{item['devanagari']}</div>",
+    unsafe_allow_html=True,
+)
+meaning = f" — {item['meaning']}" if item["meaning"] != "—" else ""
+st.markdown(f"**{item['romanized']}**{meaning}")
+target_path = clip_path(item)
+st.code(str(target_path.relative_to(REPO_ROOT)), language=None)
+
+with st.expander("🎚️ Mic input monitor", expanded=True):
+    components.html(MIC_PICKER_HTML, height=200)
+
+# A redo counter per word gives the recorder widget a fresh key each time,
+# so "Redo" fully remounts it (new mic session) instead of just re-showing
+# the same cached take — st.rerun() alone doesn't clear a component's
+# last returned value.
+if "redo_counts" not in st.session_state:
+    st.session_state.redo_counts = {}
+redo_n = st.session_state.redo_counts.get(st.session_state.idx, 0)
+
+# streamlit_mic_recorder's `format` param actually controls what bytes it
+# returns: "wav" makes it decode + re-encode to real RIFF/WAV (what we want
+# and what the filename promises); its default, "webm", returns the raw
+# MediaRecorder WebM/Opus blob unconverted — saving that with a .wav
+# extension would silently produce a file librosa can't read correctly.
+audio = mic_recorder(
+    start_prompt="🔴 Record", stop_prompt="⏹ Stop",
+    format=output_format,
+    key=f"rec_{st.session_state.idx}_{redo_n}_{output_format}",
+)
+
+if audio:
+    take_mime = "audio/wav" if output_format == "wav" else "audio/webm"
+    take_b64 = base64.b64encode(audio["bytes"]).decode("ascii")
+
+    stats = wav_signal_stats(audio["bytes"]) if output_format == "wav" else None
+    if stats is None:
+        st.warning(
+            f"Got {len(audio['bytes'])} bytes back but couldn't parse them as WAV "
+            "to check signal level (only happens if output format isn't WAV). "
+            "Listen back below to confirm it captured your voice."
+        )
+    elif stats["duration_s"] == 0:
+        st.error("Empty recording (0 frames) — the mic likely wasn't actually capturing. "
+                  "Check the Mic input monitor above, or try a different input device.")
+    elif stats["peak_pct"] < 2.0:
+        st.error(
+            f"Recorded {stats['duration_s']:.1f}s but peak level is only "
+            f"{stats['peak_pct']:.1f}% — that's silence or near-silence, not your "
+            "voice. Check the mic isn't muted, is close enough, and isn't the wrong "
+            "device (see the Mic input monitor above). Redo before keeping this."
+        )
+    elif stats["peak_pct"] < 10.0:
+        st.warning(
+            f"Recorded {stats['duration_s']:.1f}s, peak level {stats['peak_pct']:.1f}% "
+            "— quiet, but not silent. Might be usable; move closer to the mic if you "
+            "want a stronger signal."
+        )
+    else:
+        st.success(
+            f"Recorded {stats['duration_s']:.1f}s, peak level {stats['peak_pct']:.0f}% "
+            f"— looks like real speech was captured."
+        )
+
+    with st.expander("🔊 Output device", expanded=True):
+        components.html(output_player_html(take_b64, take_mime), height=140)
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("✅ Keep & continue", disabled=not speaker, use_container_width=True):
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            target_path.write_bytes(audio["bytes"])
+            st.session_state.redo_counts.pop(st.session_state.idx, None)
+            nxt = next((i for i, it in enumerate(ITEMS)
+                        if (it["pair_id"] + it["romanized"]) not in recorded_set()), None)
+            st.session_state.idx = nxt if nxt is not None else st.session_state.idx
+            st.success(f"Saved {target_path.name}")
+            st.rerun()
+    with col2:
+        if st.button("↺ Redo (restart recorder)", use_container_width=True):
+            st.session_state.redo_counts[st.session_state.idx] = redo_n + 1
+            st.rerun()
+
+def step(direction: int) -> int | None:
+    """Next/previous index, skipping done words when remaining_only is on."""
+    i = st.session_state.idx + direction
+    while 0 <= i < len(ITEMS):
+        if not remaining_only or not is_done(i):
+            return i
+        i += direction
+    return None
+
+
+prev_target = step(-1)
+next_target = step(1)
+
+st.markdown("---")
+col_prev, col_next = st.columns(2)
+with col_prev:
+    if st.button("← Previous word", use_container_width=True, disabled=prev_target is None):
+        st.session_state.idx = prev_target
+        st.rerun()
+with col_next:
+    if st.button("Next word →", use_container_width=True, disabled=next_target is None):
+        st.session_state.idx = next_target
+        st.rerun()
+
+if len(done) == len(ITEMS):
+    st.balloons()
+    st.success("All words recorded for this speaker!")
+
+st.markdown("---")
+with st.expander("📼 Review previous recordings", expanded=False):
+    saved_files = sorted(CLIPS_DIR.glob("*/*.wav")) + sorted(
+        p for p in CLIPS_DIR.glob("*/*.webm")
+    )
+    if not saved_files:
+        st.caption("Nothing saved yet.")
+    else:
+        labels = {p: f"{p.parent.name} / {p.name}" for p in saved_files}
+        chosen = st.selectbox(
+            "Pick a saved clip to check on-site",
+            options=saved_files,
+            format_func=lambda p: labels[p],
+            index=len(saved_files) - 1,  # default to most recently added
+        )
+        clip_bytes = chosen.read_bytes()
+        clip_mime = "audio/wav" if chosen.suffix == ".wav" else "audio/webm"
+
+        review_stats = wav_signal_stats(clip_bytes) if chosen.suffix == ".wav" else None
+        if review_stats:
+            st.caption(
+                f"{review_stats['duration_s']:.1f}s · peak {review_stats['peak_pct']:.0f}% "
+                f"· {review_stats['sample_rate']} Hz"
+                + (" — looks silent, may need a re-record" if review_stats["peak_pct"] < 2.0 else "")
+            )
+        else:
+            st.caption(f"{len(clip_bytes)} bytes, {chosen.suffix} — can't compute level for non-WAV.")
+
+        review_b64 = base64.b64encode(clip_bytes).decode("ascii")
+        components.html(output_player_html(review_b64, clip_mime), height=140)
+
+        col_del, _ = st.columns([1, 3])
+        with col_del:
+            if st.button("🗑️ Delete this clip", key=f"del_{chosen}"):
+                chosen.unlink()
+                st.success(f"Deleted {chosen.name}")
+                st.rerun()

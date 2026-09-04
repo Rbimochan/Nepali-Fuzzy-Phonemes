@@ -35,6 +35,15 @@ Example: `clips/ba_bha/spk01_baani_ba.wav`
 - [ ] At least 2–3 speakers per pilot pair if self-recording (per open question in §8 — leaning toward recording now rather than waiting on the community pipeline)
 - [ ] No duplicate filenames within a pair folder
 
+Full session/environment checklist (room, mic distance, pacing, per-word
+takes, hand-off steps): [recording_checklist.md](recording_checklist.md).
+
 ## Status
 
-Empty — no clips collected yet as of 2026-08-19. Word list ready. Next: check whether any community-collected clips already exist for these 8 pairs before recording a self-collected pilot set.
+`ba_bha` recorded: 10 clips, 1 speaker (`bim`). Feature extraction +
+baseline/fuzzy/GPC classifiers run on it (see `Proposal/scripts/` and
+`personc.html`) — numbers aren't meaningful yet at n=10/1 speaker, they
+confirm the pipeline runs. Remaining 7 pairs are still empty
+(`.gitkeep` only). Next: more `ba_bha` speakers, then a first pass on
+the other 7 pairs — see [recording_checklist.md](recording_checklist.md)
+for priority order.
