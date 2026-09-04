@@ -419,9 +419,16 @@ def clip_path(item: dict) -> Path:
 
 
 def recorded_set() -> set[str]:
+    # "Done" means *some* speaker has already recorded this word — not
+    # specifically the current Speaker ID field. Otherwise leaving the
+    # field blank, or switching speakers, makes every already-recorded
+    # word look unrecorded again in the "remaining only" filter and
+    # progress count, even though clips for it exist on disk.
     done = set()
     for item in ITEMS:
-        if clip_path(item).exists():
+        pattern = f"*_{item['romanized']}_{item['label']}.*"
+        pair_dir = CLIPS_DIR / item["pair_id"]
+        if pair_dir.is_dir() and any(pair_dir.glob(pattern)):
             done.add(item["pair_id"] + item["romanized"])
     return done
 
