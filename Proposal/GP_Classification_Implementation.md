@@ -123,14 +123,23 @@ as if they're results would misrepresent unrun work.
 
 ## 7. Build plan
 
-1. **Now, unblocked:** write the GP classifier + regression-to-classification
-   code against a synthetic evidence table (random/placeholder values in
-   the 8 columns) so the modeling code exists and is tested independently
-   of Lanes 1–2 landing.
-2. **Now, unblocked:** write the evaluation harness (accuracy/F1/Brier/ECE/
-   confusion matrix + the ablation loop structure) against the same
-   synthetic table.
-3. **Blocked on Utsab:** VOT/F0pert/H1H2/AspDur extraction per real clip.
+1. **Done** — `Proposal/scripts/gp_classifier_gpy.py`: GPy `GPClassification`
+   (Bernoulli/probit/EP) and `GPRegression`+threshold, both with RBF and
+   Matérn 5/2 kernels, stratified k-fold CV, accuracy/macro-F1/Brier/ECE/
+   confusion matrix, run against `make_synthetic_evidence_table()` (same
+   schema as the real handoff) or a real CSV via `--evidence-table`.
+   One real bug hit and worked around: GPy's `.predict()` returns the
+   predictive variance as a bare `nan` for classification in this version
+   (a quadrature issue, reproduces even on well-separated data) — the
+   predictive *mean* is fine and is the class probability, so
+   `posterior_variance` is derived as `p(1-p)` instead of trusting the
+   broken quadrature output.
+2. **Done** — evaluation harness (accuracy/F1/Brier/ECE/confusion matrix)
+   is part of the same script, run per-pair.
+3. **TODO:** wire this into the ablation loop structure from Figure 6
+   (E0–E7 feature-subset toggles) — not yet built, straightforward given
+   `FEATURE_COLS` is already a flat list to subset.
+4. **Blocked on Utsab:** VOT/F0pert/H1H2/AspDur extraction per real clip.
 4. **Blocked on Sushank:** GMM/DTW/Fuzzy/Topic columns in the evidence
    table.
 5. **Once 3+4 land:** swap synthetic data for real, rerun, report real
