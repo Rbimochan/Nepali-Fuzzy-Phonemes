@@ -27,17 +27,34 @@ N_MFCC = 13
 
 def qc_normalize(path: Path) -> tuple[np.ndarray, int]:
     y, sr = librosa.load(str(path), sr=TARGET_SR, mono=True)
-    y, _ = librosa.effects.trim(y, top_db=30)
-    return y, sr
+    y_trimmed, _ = librosa.effects.trim(y, top_db=30)
+    # top_db=30 can over-trim short/quiet-tailed words and clip real
+    # speech (seen on fast words like "taar" and "mool" — the raw clip had
+    # a clear voice signal, but trim cut it to a fraction of a second). If
+    # trimming would keep less than half the original audio, the original
+    # signal likely wasn't the quiet room-noise this is meant to strip —
+    # keep the untrimmed clip instead of losing the word.
+    if len(y_trimmed) < 0.5 * len(y):
+        return y, sr
+    return y_trimmed, sr
 
 
 def extract_features(y: np.ndarray, sr: int) -> dict:
     duration = len(y) / sr
 
     mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=N_MFCC)
-    mfcc_delta = librosa.feature.delta(mfcc)
+    # delta's default width=9 needs >=9 frames; very short clips have
+    # fewer, so shrink to the largest odd width that fits (min 3).
+    n_frames = mfcc.shape[1]
+    delta_width = min(9, n_frames if n_frames % 2 == 1 else n_frames - 1)
+    delta_width = max(3, delta_width)
+    if n_frames >= delta_width:
+        mfcc_delta = librosa.feature.delta(mfcc, width=delta_width)
+        mfcc_delta_mean = mfcc_delta.mean(axis=1)
+    else:
+        # fewer than 3 frames total — can't compute a delta at all
+        mfcc_delta_mean = np.zeros(N_MFCC)
     mfcc_mean = mfcc.mean(axis=1)
-    mfcc_delta_mean = mfcc_delta.mean(axis=1)
 
     centroid = librosa.feature.spectral_centroid(y=y, sr=sr)[0]
     centroid_mean = float(centroid.mean()) if centroid.size else 0.0
