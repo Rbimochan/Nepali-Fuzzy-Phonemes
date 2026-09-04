@@ -136,15 +136,24 @@ as if they're results would misrepresent unrun work.
    broken quadrature output.
 2. **Done** — evaluation harness (accuracy/F1/Brier/ECE/confusion matrix)
    is part of the same script, run per-pair.
-3. **TODO:** wire this into the ablation loop structure from Figure 6
-   (E0–E7 feature-subset toggles) — not yet built, straightforward given
-   `FEATURE_COLS` is already a flat list to subset.
+3. **Done** — `Proposal/scripts/ablation_grid.py`: E0–E7 per the abstract's
+   "eight experimental configurations," mapping the paper's threefold
+   evidence split onto three toggleable branches (`general` = GMM+DTW,
+   `cue` = VOT/F0_pert/H1H2/AspDur/Fuzzy, `context` = Topic) — 2³=8
+   configs, E0 as a majority-class baseline rather than an empty feature
+   set. Verified on synthetic data: E7 (full hybrid) beats E0 (baseline)
+   on average across all 8 pairs, the expected shape. One thing to watch:
+   GPy throws numerical overflow warnings on the single-feature
+   `context`-only configs (degenerate lengthscale optimization with 1
+   dimension) — doesn't crash or obviously corrupt results on synthetic
+   data, but worth re-checking once real Topic scores replace synthetic
+   ones, since real single-feature behavior may differ.
 4. **Blocked on Utsab:** VOT/F0pert/H1H2/AspDur extraction per real clip.
-4. **Blocked on Sushank:** GMM/DTW/Fuzzy/Topic columns in the evidence
+5. **Blocked on Sushank:** GMM/DTW/Fuzzy/Topic columns in the evidence
    table.
-5. **Once 3+4 land:** swap synthetic data for real, rerun, report real
+6. **Once 4+5 land:** swap synthetic data for real, rerun, report real
    numbers — this is when §6 of the paper gets filled in for real.
-6. Resolve the open question in §4 above (definition of the regression
+7. Resolve the open question in §4 above (definition of the regression
    target `y`) with the team before or during step 1.
 
 ## 8. Relationship to the existing pilot
