@@ -453,7 +453,33 @@ for pid, (name, words) in PAIRS.items():
 if remaining_only and len(done) == len(ITEMS):
     st.sidebar.success("Nothing left — everything's recorded!")
 
+
+def item_key(i: int) -> str:
+    return ITEMS[i]["pair_id"] + ITEMS[i]["romanized"]
+
+
+def is_done(i: int) -> bool:
+    return item_key(i) in done
+
+
+def nearest_undone(start: int) -> int:
+    """When remaining_only is on, the current index should never land on an
+    already-recorded word — this finds the closest unrecorded one (forward
+    first, then backward) so 'removed from the portal' actually means the
+    stage never shows them, not just the sidebar list."""
+    if not remaining_only or not is_done(start):
+        return start
+    for i in range(start, len(ITEMS)):
+        if not is_done(i):
+            return i
+    for i in range(start, -1, -1):
+        if not is_done(i):
+            return i
+    return start  # everything done
+
+
 st.session_state.idx = max(0, min(st.session_state.idx, len(ITEMS) - 1))
+st.session_state.idx = nearest_undone(st.session_state.idx)
 item = ITEMS[st.session_state.idx]
 
 st.title("🎙️ Phoneme Recording Booth")
@@ -545,15 +571,28 @@ if audio:
             st.session_state.redo_counts[st.session_state.idx] = redo_n + 1
             st.rerun()
 
+def step(direction: int) -> int | None:
+    """Next/previous index, skipping done words when remaining_only is on."""
+    i = st.session_state.idx + direction
+    while 0 <= i < len(ITEMS):
+        if not remaining_only or not is_done(i):
+            return i
+        i += direction
+    return None
+
+
+prev_target = step(-1)
+next_target = step(1)
+
 st.markdown("---")
 col_prev, col_next = st.columns(2)
 with col_prev:
-    if st.button("← Previous word", use_container_width=True, disabled=st.session_state.idx == 0):
-        st.session_state.idx -= 1
+    if st.button("← Previous word", use_container_width=True, disabled=prev_target is None):
+        st.session_state.idx = prev_target
         st.rerun()
 with col_next:
-    if st.button("Next word →", use_container_width=True, disabled=st.session_state.idx >= len(ITEMS) - 1):
-        st.session_state.idx += 1
+    if st.button("Next word →", use_container_width=True, disabled=next_target is None):
+        st.session_state.idx = next_target
         st.rerun()
 
 if len(done) == len(ITEMS):
