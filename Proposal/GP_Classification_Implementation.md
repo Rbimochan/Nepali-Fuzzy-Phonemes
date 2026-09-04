@@ -148,6 +148,14 @@ as if they're results would misrepresent unrun work.
    dimension) — doesn't crash or obviously corrupt results on synthetic
    data, but worth re-checking once real Topic scores replace synthetic
    ones, since real single-feature behavior may differ.
+3b. **Done** — kernel-robustness check: reran the full E0–E7 grid with
+   Matérn 5/2 (`Proposal/artifacts/ablation_results_matern52.csv`,
+   combined with the RBF run in
+   `Proposal/artifacts/ablation_results_kernel_comparison.csv`). The
+   E0→E7 shape holds for both kernels (E7 accuracy 0.747 RBF vs. 0.759
+   Matérn 5/2 — same ranking, no kernel-dependent reversal), which is
+   what you want to see before trusting the ablation structure on real
+   data: the branch-contribution pattern isn't an RBF-specific artifact.
 4. **Blocked on Utsab:** VOT/F0pert/H1H2/AspDur extraction per real clip.
 5. **Blocked on Sushank:** GMM/DTW/Fuzzy/Topic columns in the evidence
    table.
