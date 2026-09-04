@@ -191,14 +191,11 @@ MIC_PICKER_HTML = """
     if (document.hidden) stopMonitor("Stopped (tab hidden) — mic is free.");
   });
 
-  try {
-    // Trigger a brief permission prompt so device labels are populated,
-    // then immediately release it — this does not start monitoring.
-    const tmp = await navigator.mediaDevices.getUserMedia({ audio: true });
-    tmp.getTracks().forEach(t => t.stop());
-  } catch (e) {
-    status.textContent = "Microphone permission needed to list devices.";
-  }
+  // No automatic getUserMedia call here — Streamlit reruns this component's
+  // iframe on nearly every interaction, and each reload counted as a fresh
+  // permission request in Safari, producing a popup almost every click.
+  // Device labels stay generic ("Microphone 1", etc.) until you press
+  // "Test mic" once, which is the only thing that now asks for permission.
   await listDevices();
   navigator.mediaDevices.ondevicechange = listDevices;
 })();
@@ -267,10 +264,11 @@ def output_player_html(audio_base64: str, mime: str) -> str:
     }}
   }});
 
-  try {{
-    const tmp = await navigator.mediaDevices.getUserMedia({{ audio: true }});
-    tmp.getTracks().forEach(t => t.stop());
-  }} catch (e) {{ /* labels may stay blank without permission; not fatal here */ }}
+  // No priming getUserMedia call here either — this component re-renders
+  // on every take/review, so it was asking for mic permission constantly
+  // just to list *output* devices. Labels may stay blank until permission
+  // has been granted elsewhere (e.g. the mic monitor's "Test mic"); that's
+  // an acceptable tradeoff for not spamming the permission dialog.
   await listOutputs();
   navigator.mediaDevices.ondevicechange = listOutputs;
 }})();
