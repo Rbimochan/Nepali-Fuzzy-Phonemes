@@ -1,0 +1,295 @@
+% Fuzzy Phonemes: two-column IEEE-conference-style paper skeleton.
+%
+% Compile with pdflatex (or upload to Overleaf and pick "IEEE Conference"
+% template if you don't have IEEEtran.cls locally -- Overleaf ships it
+% built in, no setup needed). No local LaTeX toolchain was available in
+% this session to test-compile this file; check it builds before relying
+% on it.
+%
+% Content is drawn from the locked proposal
+% (Fuzzy_Phonemes_Nepali_ASR_Disambiguation.pdf) and the three
+% implementation spec docs (bimochan.md, utsab.md, sushank.md). The
+% Results section is deliberately left as placeholders/TODOs rather than
+% reusing the proposal PDF's illustrative numbers (23.7% error reduction,
+% Brier=0.072, etc.) -- those were written before any code existed and
+% are targets, not results. Fill them in only once real experiments on
+% real evidence-table data have actually run.
+
+\documentclass[10pt,conference]{IEEEtran}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+
+% Nepali examples below are given in romanized transliteration only, so
+% this compiles cleanly under plain pdflatex with no extra font setup.
+% To show actual Devanagari script instead, compile with XeLaTeX or
+% LuaLaTeX and add:
+%   \usepackage{fontspec}
+%   \newfontfamily\devanagarifont{Noto Sans Devanagari}
+% then wrap the script text in {\devanagarifont ...}. Untested in this
+% session (no local TeX toolchain) -- verify before relying on it.
+
+\title{Fuzzy Phonemes: A Hybrid Acoustic-Phonetic and Contextual
+Framework with Gaussian Process Classification for Disambiguating
+Confusable Words in Low-Resource Nepali ASR}
+
+\author{
+  \IEEEauthorblockN{Bimochan Raj Kunwar, Utsab Dahal, Sushank Pokhrel}
+  \IEEEauthorblockA{Software College of IT \& E-Commerce, Nepal\\
+  \texttt{\{bimochan.kunwar, utsab.dahal, sushank.pokhrel\}@softwarica.edu.np}}
+}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Automatic Speech Recognition (ASR) for low-resource languages like Nepali
+faces significant challenges in distinguishing phonetically confusable
+words, leading to errors that alter meaning and degrade downstream
+applications. This paper presents a hybrid post-ASR disambiguation
+framework that integrates three complementary evidence sources:
+(1) general acoustic evidence from MFCC and spectral features,
+(2) explicit phonetic cues including Voice Onset Time (VOT), F0
+perturbation, spectral tilt, and aspiration duration, and (3) contextual
+evidence from Latent Dirichlet Allocation (LDA) topic modeling. The
+framework employs a Gaussian Process (GP) classifier with RBF and
+Mat\'ern kernels to provide probabilistic candidate ranking and
+uncertainty estimates. We evaluate our approach on Nepali speech corpora
+(OpenSLR SLR54) using a controlled ablation framework with eight
+experimental configurations.
+\textbf{[RESULTS PENDING --- fill in once real evidence-table data from
+Lanes 1--2 lands and \texttt{gp\_classifier\_gpy.py} /
+\texttt{ablation\_grid.py} are rerun on it; do not reuse illustrative
+figures from earlier drafts of this proposal.]}
+Our work provides a reproducible methodology for phonetic confusion
+analysis in low-resource ASR and establishes the value of explicit
+acoustic-phonetic modeling in post-processing pipelines.
+\end{abstract}
+
+\section{Introduction}
+
+Automatic Speech Recognition technology has advanced remarkably through
+deep learning and large-scale multilingual pretraining. Models like
+Whisper~\cite{radford2023whisper} demonstrate impressive performance
+across numerous languages, including low-resource settings. However, a
+critical challenge persists: the accurate recognition of phonetically
+confusable words --- words that differ in subtle acoustic properties but
+carry distinct meanings.
+
+This problem is particularly acute in tonal and aspiration-contrasting
+languages like Nepali, where minimal pairs such as b\={a}gha (tiger) and
+bh\={a}ga (section/part) differ primarily in aspiration of the initial
+stop consonant, or kala (machine) and khala (group) distinguished
+by VOT length. These phonetic distinctions are challenging for ASR
+systems because:
+\begin{enumerate}
+  \item Acoustic cues are continuous and speaker-dependent, not discrete
+        categories.
+  \item Limited training data in low-resource languages may not
+        adequately represent phonetic variation.
+  \item Standard acoustic features (MFCCs) may not explicitly capture
+        contrast-relevant cues.
+\end{enumerate}
+
+This paper proposes a hybrid framework combining general acoustic
+evidence, explicit acoustic-phonetic cues, and contextual evidence,
+disambiguated via a Gaussian Process classifier that provides both
+predictions and well-calibrated uncertainty estimates.
+
+\textbf{Contributions:}
+\begin{enumerate}
+  \item A systematic characterization of phonetic confusion errors in
+        Nepali ASR.
+  \item A hybrid disambiguation framework integrating general acoustic,
+        explicit phonetic, and contextual evidence.
+  \item Empirical evaluation of the full hybrid model against baselines
+        and an eight-configuration ablation grid.
+\end{enumerate}
+
+\section{Problem Statement and Dataset}
+
+\subsection{Problem Statement}
+Given an ASR hypothesis containing a potentially erroneous word
+$w_{asr}$, a set of phonetically similar candidates
+$\mathcal{C} = \{c_1, \ldots, c_k\}$, the corresponding speech segment
+$s$, and sentence-level context $T$, the goal is to select the most
+probable intended word $w^* \in \mathcal{C} \cup \{w_{asr}\}$ by
+modeling:
+\begin{equation}
+\resizebox{0.48\textwidth}{!}{$\displaystyle
+P(w \mid s, T, \theta) = \frac{P(s \mid w, \theta_{ac}) \cdot P(T \mid w, \theta_{ctx}) \cdot P(w \mid \theta_{pr})}
+{\sum_{w' \in \mathcal{C} \cup \{w_{asr}\}} P(s \mid w', \theta_{ac}) \cdot P(T \mid w', \theta_{ctx}) \cdot P(w' \mid \theta_{pr})}
+$}
+\end{equation}
+where $\theta_{ac}$ captures general and explicit phonetic evidence,
+$\theta_{ctx}$ captures topic/lexical context, and $\theta_{pr}$ captures
+word frequency information.
+
+\subsection{Dataset}
+\textbf{OpenSLR SLR54} Nepali speech corpus: $\sim$63 hours of clean,
+read speech, 215 native speakers, 16kHz/16-bit PCM, general news/narrative
+domain, 80/10/10 speaker-disjoint train/val/test split.
+
+\textbf{Targeted confusable-pair dataset:} pilot set spanning aspiration
+(20 pairs), vowel quality (15 pairs), and place/manner contrasts
+(10 pairs) --- see Table~\ref{tab:pairs}.
+
+\begin{table}[t]
+\centering
+\caption{Representative Nepali confusable word pairs}
+\label{tab:pairs}
+\begin{tabular}{@{}llll@{}}
+\toprule
+ID & Word 1 & Word 2 & Contrast \\
+\midrule
+A001 & b\={a}gha & bh\={a}ga & Aspiration \\
+A003 & kala & khala & Aspiration \\
+V002 & t\={a}la & \d{t}\={a}la & Place (dental/retroflex) \\
+V003 & s\={a}la & s\={a}l\={\i} & Vowel length \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Methodology}
+
+\subsection{Overview}
+The system operates in four stages: (1) ASR and alignment via Whisper,
+(2) confusion detection and candidate generation via phonetic similarity
+scoring, (3) multi-evidence extraction (general acoustic, explicit
+phonetic, contextual), and (4) GP classification producing probabilistic
+candidate predictions. Work is organized into three coordinated lanes:
+Lane 1 (data \& evidence foundation), Lane 2 (hybrid evidence modeling),
+and Lane 3 (probabilistic disambiguation), converging in a shared
+evaluation stage.
+
+\subsection{Candidate Generation}
+G2P conversion (rule-based Devanagari~$\to$~IPA), 22-dimensional PanPhon
+articulatory features~\cite{mortensen2016panphon}, weighted edit distance
+for phonetic similarity, frequency filtering ($\geq$10 corpus occurrences).
+
+\subsection{Feature Extraction}
+\textbf{General acoustic evidence (8 features, via \texttt{librosa}):}
+MFCCs (13 coeff. + $\Delta$ + $\Delta\Delta$), F0, RMS energy, spectral
+centroid, spectral bandwidth, spectral rolloff, zero-crossing rate,
+duration.
+
+\textbf{Explicit acoustic-phonetic cues (4 primary features, via
+Praat):} Voice Onset Time (VOT), F0 perturbation at vowel onset, spectral
+tilt (H1-H2), aspiration duration --- plus closure duration and vowel
+duration as temporal cues.
+
+\subsection{Fuzzy Evidence Integration}
+Fuzzy membership functions (e.g.\ Unaspirated / Aspirated / Ambiguous
+over VOT) are fit from training-data distributions and aggregated into a
+single \emph{Fuzzy} score via a weighted sum, weights learned during
+training.
+
+\subsection{Contextual Evidence via LDA}
+LDA~\cite{blei2003lda} trained with $K=20$ topics on a 50{,}000-document
+Nepali text corpus (\texttt{gensim}). Context score for candidate $w$:
+\begin{equation}
+\text{ContextScore}(w) = \sum_{t=1}^{K} P(t \mid \text{context}) \cdot P(w \mid t)
+\end{equation}
+
+\subsection{Gaussian Process Classification}
+Feature vector per candidate occurrence:
+\begin{equation}
+\resizebox{0.48\textwidth}{!}{$\displaystyle
+X = [\text{VOT}, F0_{\text{pert}}, H1H2, \text{AspDur}, \text{GMM}, \text{DTW}, \text{Fuzzy}, \text{Topic}]
+$}
+\end{equation}
+8-dimensional, standardized to zero mean/unit variance using
+training-split statistics only.
+
+Binary GP classification (candidate A vs.\ B) with Bernoulli likelihood
+(probit link, expectation propagation), comparing two covariance
+functions:
+\begin{equation}
+k_{\text{RBF}}(x,x') = \sigma_f^2 \exp\left(-\frac{\|x-x'\|^2}{2\ell^2}\right)
+\end{equation}
+\begin{equation}
+\resizebox{0.48\textwidth}{!}{$\displaystyle
+k_{\text{M52}}(x,x') = \sigma_f^2\left(1+\frac{\sqrt{5}\|x-x'\|}{\ell}+\frac{5\|x-x'\|^2}{3\ell^2}\right)\exp\left(-\frac{\sqrt{5}\|x-x'\|}{\ell}\right)
+$}
+\end{equation}
+Hyperparameters fit by marginal-likelihood maximization (L-BFGS-B),
+implemented in \texttt{GPy}.
+
+A regression-to-classification arm is also evaluated: a GP regressor
+predicts a continuous confusability score $y \in [0,1]$, thresholded at
+$\tau=0.5$, compared against the direct classifier.
+
+\subsection{Baselines}
+SVM (RBF kernel, grid search), Random Forest (100 trees, Gini), and
+Logistic Regression (L2, cross-validated), all on the same 8-D feature
+vector.
+
+\section{Experimental Setup}
+
+\subsection{Preprocessing}
+Audio resampled to 16kHz mono, normalized to $-3$dB peak. Features
+standardized using training-only statistics. Missing VOT values (non-initial
+stops) imputed via KNN ($K=5$). Speaker-disjoint 70/15/15 split.
+
+\subsection{Ablation Grid}
+Eight configurations (E0--E7) toggle three evidence branches on/off:
+\emph{general} (GMM+DTW), \emph{cue} (VOT/F0$_{\text{pert}}$/H1H2/AspDur/Fuzzy),
+\emph{context} (Topic). E0 is a majority-class baseline; E7 is the full
+hybrid model. $2^3=8$ matches the abstract's ``eight experimental
+configurations.''
+
+\subsection{Evaluation Metrics}
+Candidate-level: accuracy, macro-F1, confusion matrix. Calibration:
+Brier score, Expected Calibration Error (ECE). ASR-level: targeted
+substitution error rate, WER/CER before and after correction.
+
+\section{Results}
+
+\textbf{[TO BE COMPLETED.]} This section intentionally contains no
+numbers yet. Populate it only after:
+\begin{enumerate}
+  \item Lane 1 (Utsab) delivers real VOT/F0$_{\text{pert}}$/H1H2/AspDur
+        extraction per occurrence;
+  \item Lane 2 (Sushank) delivers real GMM/DTW/Fuzzy/Topic scores in the
+        Candidate $\times$ Occurrence Evidence Table;
+  \item \texttt{Proposal/scripts/gp\_classifier\_gpy.py} and
+        \texttt{Proposal/scripts/ablation\_grid.py} are rerun against
+        that real table (both currently verified working against
+        synthetic placeholder data of the same schema).
+\end{enumerate}
+Do not reuse the illustrative figures from earlier proposal drafts
+(e.g.\ ``23.7\% relative error reduction,'' ``Brier~$=$~0.072'') as if
+they were measured --- they were written before any code existed.
+
+\section{Conclusion}
+
+\textbf{[TO BE COMPLETED once Results is filled in.]} Summarize whether
+the hybrid evidence combination measurably improves candidate
+disambiguation and calibration over the acoustic-only baseline, and what
+the ablation grid reveals about each evidence branch's marginal
+contribution.
+
+\bibliographystyle{IEEEtran}
+\begin{thebibliography}{9}
+
+\bibitem{radford2023whisper}
+A. Radford et al., ``Robust Speech Recognition via Large-Scale Weak
+Supervision,'' \emph{ICML}, 2023.
+
+\bibitem{mortensen2016panphon}
+D. R. Mortensen et al., ``PanPhon: A Resource for Mapping IPA Segments
+to Articulatory Feature Vectors,'' \emph{COLING}, 2016.
+
+\bibitem{blei2003lda}
+D. M. Blei, A. Y. Ng, and M. I. Jordan, ``Latent Dirichlet Allocation,''
+\emph{JMLR}, 2003.
+
+\bibitem{rasmussen2006gp}
+C. E. Rasmussen and C. K. I. Williams, \emph{Gaussian Processes for
+Machine Learning}, MIT Press, 2006.
+
+\end{thebibliography}
+
+\end{document}
