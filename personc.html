@@ -228,7 +228,7 @@
 </div>
 
 <h2>4. Real proposal-spec implementation (GPy, per §4.5–4.6 of the locked paper)</h2>
-<p>After the pilot, went back to the actual locked proposal (<code>Fuzzy_Phonemes_Nepali_ASR_Disambiguation.pdf</code>) and built toward its real spec instead of the pilot's stand-in feature set. Full plan in <a href="https://github.com/Rbimochan/Nepali-Fuzzy-Phonemes/blob/main/Proposal/GP_Classification_Implementation.md"><code>Proposal/GP_Classification_Implementation.md</code></a>.</p>
+<p>After the pilot, went back to the actual locked proposal (<code>Fuzzy_Phonemes_Nepali_ASR_Disambiguation.pdf</code>) and built toward its real spec instead of the pilot's stand-in feature set. Full plan in <a href="https://github.com/Rbimochan/Nepali-Fuzzy-Phonemes/blob/main/Proposal/bimochan.md"><code>Proposal/bimochan.md</code></a>.</p>
 <ul class="checklist">
   <li class="done"><div class="box"></div><div>Implementation spec written — the exact 8-feature vector <code>[VOT, F0_pert, H1H2, AspDur, GMM, DTW, Fuzzy, Topic]</code>, the evidence-table handoff contract expected from Utsab/Sushank's lanes, and an explicit note that the proposal PDF's headline numbers (23.7% error reduction, Brier=0.072) are pre-code illustrative targets, not results to reuse.</div></li>
   <li class="done"><div class="box"></div><div><code>Proposal/scripts/gp_classifier_gpy.py</code> — real <code>GPy</code> <code>GPClassification</code> (Bernoulli/probit/EP, not sklearn's stand-in) and <code>GPRegression</code>+threshold, both with RBF and Matérn 5/2 kernels, stratified k-fold CV, accuracy/macro-F1/Brier/ECE/confusion matrix. Runs against synthetic data matching the real handoff schema, or a real CSV via <code>--evidence-table</code> — both paths verified. Found and worked around a real GPy bug: <code>.predict()</code>'s variance comes back <code>nan</code> for classification (a quadrature issue in this version); derives <code>posterior_variance</code> as <code>p(1-p)</code> from the (correct) predictive mean instead.</div></li>
@@ -266,7 +266,7 @@
   <li><a href="https://github.com/Rbimochan/Nepali-Fuzzy-Phonemes/pull/3">PR #3</a> — Utsab's heavy-processing pipeline, merged.</li>
   <li><code>Proposal/bimochan.html</code> — my original solo plan (this file tracks progress against it).</li>
   <li><code>Proposal/Nepali_Fuzzy_Phonemes_Research_Proposal.md</code> — full project proposal (matches the locked <code>Fuzzy_Phonemes_Nepali_ASR_Disambiguation.pdf</code>).</li>
-  <li><code>Proposal/GP_Classification_Implementation.md</code> — the real spec + build plan for §4 above.</li>
+  <li><code>Proposal/bimochan.md</code> — the real spec + build plan for §4 above.</li>
   <li><code>person1/README.md</code> — Person A's scope, status, and the data schema my pipeline should read from.</li>
 </ul>
 

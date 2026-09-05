@@ -2,7 +2,7 @@
 
 Implementation spec for §4.2–4.3.2 of the locked proposal
 (`Fuzzy_Phonemes_Nepali_ASR_Disambiguation.pdf`, March 2026), matching the
-format of `Proposal/GP_Classification_Implementation.md`. This documents
+format of `Proposal/bimochan.md`. This documents
 what Lane 1 needs to produce and cross-references it against what already
 exists in `person1/` — that folder predates the locked proposal (it was
 built under an earlier P1/P2/P3 scheme, not this paper's Lane 1/2/3 split)
@@ -50,7 +50,7 @@ Mapping what it already covers against the spec above:
 | Phonetic distance / confusable clusters | ✅ done (`scripts/phonetic_distance.py`, `scripts/similar_words.py`, `scripts/confusable_clusters.py`) | This is the strongest overlap — `similar_words.tsv` and `confusable_clusters.tsv` already exist as artifacts. |
 | Whisper ASR + alignment | ⚠️ partially done | `person1/asr/run_whisper.py`, `build_audio_text_ipa.py`, `build_index.py` exist and have been run (`whisper_output.tsv`, `whisper_words.tsv`, `audio_text_ipa.tsv` all present as artifacts) — but this was for the earlier P1.9 "confusion prior estimation" goal, not explicitly validated against this proposal's "substitution detection + word boundary extraction" framing. Likely close, needs a compatibility check rather than a rebuild. |
 | General acoustic features (MFCC, F0, energy, spectral, duration) | ❌ not found | No script producing these 8 general features (§4.3.1 of the GP-classification spec) currently exists in `person1/`. |
-| **Explicit phonetic cues (VOT, F0 perturbation, H1-H2, aspiration duration)** | ❌ not built | Confirmed in `person1/README.md`: P1.10 (alignment/confusion-prior) and P1.11 (motivation stats) are marked `TODO`, and there's no Praat-based cue-extraction script anywhere in `person1/scripts/`. **This is the single biggest blocker for both Lane 2 (Sushank) and Lane 3 (Bimochan)** — see `Proposal/GP_Classification_Implementation.md` §7, which is blocked on exactly this. |
+| **Explicit phonetic cues (VOT, F0 perturbation, H1-H2, aspiration duration)** | ❌ not built | Confirmed in `person1/README.md`: P1.10 (alignment/confusion-prior) and P1.11 (motivation stats) are marked `TODO`, and there's no Praat-based cue-extraction script anywhere in `person1/scripts/`. **This is the single biggest blocker for both Lane 2 (Sushank) and Lane 3 (Bimochan)** — see `Proposal/bimochan.md` §7, which is blocked on exactly this. |
 | Validated Handoff Package (structured output) | ❌ not built | The individual artifacts exist but aren't assembled into the single structured package Figure 3 describes as the Lane 2 handoff. |
 
 ## 3. What's actually left to build
@@ -95,7 +95,7 @@ downstream is blocked on his output being correct"):
 
 ## 4. Handoff contract (what Lanes 2 and 3 are waiting on)
 
-Per `Proposal/GP_Classification_Implementation.md` §1, Lane 3's evidence
+Per `Proposal/bimochan.md` §1, Lane 3's evidence
 table expects these columns to trace back to this lane's output:
 `VOT`, `F0_pert`, `H1H2`, `AspDur` (all four blocked per §2 above), plus
 `occurrence_id` and `candidate_word` linking back to the ASR

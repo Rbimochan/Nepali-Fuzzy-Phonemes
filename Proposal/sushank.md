@@ -2,7 +2,7 @@
 
 Implementation spec for §4.3.1–4.4 of the locked proposal
 (`Fuzzy_Phonemes_Nepali_ASR_Disambiguation.pdf`, March 2026), matching the
-format of `Proposal/GP_Classification_Implementation.md` and
+format of `Proposal/bimochan.md` and
 `Proposal/utsab.md`. Documents what Lane 2 needs to produce for the
 Candidate × Occurrence Evidence Table that Lane 3 (Bimochan) consumes.
 Written by the Lane 3 person as a documentation pass, not an
@@ -35,10 +35,10 @@ in the ground-truth transcript is the positive/`true_label` example for
 that word's GMM and for the fuzzy membership fit; the other cluster
 members, at their own occurrences, supply negative examples. This is the
 same `true_label` column already in Lane 3's evidence-table contract
-(`Proposal/GP_Classification_Implementation.md` §1), so no separate
+(`Proposal/bimochan.md` §1), so no separate
 labeling pipeline is needed — just consistent joining against Lane 1's
 transcripts. (This is distinct from the human-ambiguity rating set in
-`Proposal/GP_Classification_Implementation.md`'s build plan, which is a
+`Proposal/bimochan.md`'s build plan, which is a
 later calibration check, not a training-label source.)
 
 ### 2.1 GMM likelihood scoring
@@ -95,7 +95,7 @@ same §2.0 labels, or a separate calibration step). Suggested:
 
 Per Figure 4's "Candidate Evidence Handoff": one row per (candidate,
 occurrence) with columns `GMM`, `DTW`, phonetic-cue scores, `Fuzzy`,
-`Topic`. This is exactly the schema `Proposal/GP_Classification_Implementation.md`
+`Topic`. This is exactly the schema `Proposal/bimochan.md`
 §1 already specifies as Lane 3's input contract — **that's the file to
 match column-for-column**, not a new schema to design independently:
 
@@ -121,7 +121,7 @@ new design:
    models themselves need to be written.
 2. **GP Regression variant execution** (§4.5.3) — once Bimochan's
    `gp_classifier_gpy.py` pipeline is confirmed working (it is, on
-   synthetic data — see `Proposal/GP_Classification_Implementation.md`
+   synthetic data — see `Proposal/bimochan.md`
    §7), rerun it on real data once available; this is "reuse the GP
    pipeline with a different target," not new implementation.
 3. **Ablation grid execution** (E0–E7) — `Proposal/scripts/ablation_grid.py`
@@ -141,6 +141,6 @@ new design:
   the coherence analysis actually run, or whether 20 is being taken as a
   reasonable default to state outright.
 - Confirm this doc's understanding of the handoff-table schema
-  (§3) against `Proposal/GP_Classification_Implementation.md` §1 with
+  (§3) against `Proposal/bimochan.md` §1 with
   Bimochan before building, since a schema mismatch here would silently
   break Lane 3's evidence-table loading.
