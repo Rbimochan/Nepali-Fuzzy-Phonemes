@@ -148,7 +148,7 @@ as if they're results would misrepresent unrun work.
    dimension) — doesn't crash or obviously corrupt results on synthetic
    data, but worth re-checking once real Topic scores replace synthetic
    ones, since real single-feature behavior may differ.
-3b. **Done** — kernel-robustness check: reran the full E0–E7 grid with
+4. **Done** — kernel-robustness check: reran the full E0–E7 grid with
    Matérn 5/2 (`Proposal/artifacts/ablation_results_matern52.csv`,
    combined with the RBF run in
    `Proposal/artifacts/ablation_results_kernel_comparison.csv`). The
@@ -156,13 +156,13 @@ as if they're results would misrepresent unrun work.
    Matérn 5/2 — same ranking, no kernel-dependent reversal), which is
    what you want to see before trusting the ablation structure on real
    data: the branch-contribution pattern isn't an RBF-specific artifact.
-4. **Blocked on Utsab:** VOT/F0pert/H1H2/AspDur extraction per real clip.
-5. **Blocked on Sushank:** GMM/DTW/Fuzzy/Topic columns in the evidence
+5. **Blocked on Utsab:** VOT/F0pert/H1H2/AspDur extraction per real clip.
+6. **Blocked on Sushank:** GMM/DTW/Fuzzy/Topic columns in the evidence
    table.
-6. **Once 4+5 land:** swap synthetic data for real, rerun, report real
+7. **Once 5+6 land:** swap synthetic data for real, rerun, report real
    numbers — this is when §6 of the paper gets filled in for real.
-7. Resolve the open question in §4 above (definition of the regression
-   target `y`) with the team before or during step 1.
+8. Resolve the open question in §4 above (definition of the regression
+   target `y`) with the team before or during step 1 — see §9 below.
 
 ## 8. Relationship to the existing pilot
 
@@ -175,3 +175,21 @@ confused with the Lane 3 deliverable described above. Once the real
 8-feature evidence table exists, this pilot's clips could still be
 folded in as additional training data if the audio and word list overlap
 with the team's OpenSLR-based confusable-pair set.
+
+## 9. Open questions to resolve before/during implementation
+
+- **Regression target `y` (§4)**: the proposal doesn't define what the GP
+  regressor in §4.5.3 actually predicts. Current default assumption is
+  `y = 1` for the true candidate, `0` otherwise — the same labels the
+  classifier uses, just modeled as a continuous score instead of a class
+  probability. Confirm with the team before treating this as final;
+  don't let it stay an implicit assumption once real data lands.
+- **`context`-only numerical instability (§7 item 3)**: GPy's overflow
+  warnings on single-feature configs are unconfirmed to be harmless on
+  real Topic scores — re-check once that data exists rather than
+  assuming the synthetic-data behavior carries over.
+- **Interface with Sushank's evidence table**: this doc's §1 schema is
+  the contract both `Proposal/sushank.md` and `Proposal/utsab.md`
+  reference as authoritative — if any of the three docs' understanding
+  of the schema drifts during implementation, that's a silent breakage
+  risk worth a quick three-way check before Lane 2's real handoff lands.
