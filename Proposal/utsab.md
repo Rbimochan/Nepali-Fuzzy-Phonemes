@@ -59,27 +59,39 @@ In priority order (highest-impact first, since everything downstream is
 blocked on this lane per the group's own Aug-20 discussion — "everyone
 downstream is blocked on his output being correct"):
 
-1. **VOT extraction** — waveform/spectrogram analysis via Praat, per word
-   occurrence. This is the most load-bearing single feature (it's the
-   *primary* cue in Figure 4's phonetic-cue branch) and the one the
-   locked proposal's phonology examples center on (बाघ/भाग aspiration
-   contrast).
+1. **VOT extraction** — waveform/spectrogram analysis via Praat (likely
+   `parselmouth`, the standard Python-Praat bridge — not yet a dependency
+   anywhere in the repo), per word occurrence. Suggested:
+   `person1/scripts/phonetic_cues.py`, functions `extract_vot()` etc., one
+   module shared across items 1–2 rather than a separate script per cue.
+   This is the most load-bearing single feature (it's the *primary* cue in
+   Figure 4's phonetic-cue branch) and the one the locked proposal's
+   phonology examples center on (बाघ/भाग aspiration contrast).
 2. **F0 perturbation, spectral tilt (H1-H2), aspiration duration** — same
-   Praat-based approach, can likely share tooling/setup with VOT
-   extraction once that pipeline exists.
+   Praat-based approach and same suggested module as item 1.
 3. **General acoustic features** (§4.3.1's 8 features via `librosa`) — the
-   most mechanical of the remaining work; no novel design needed, just
-   needs to run per occurrence and land in the handoff package.
+   most mechanical of the remaining work. Suggested:
+   `person1/scripts/general_acoustic_features.py`; no novel design needed,
+   just needs to run per occurrence and land in the handoff package.
 4. **Resolve the PanPhon dimension mismatch** (22 vs 24) with the team —
    low effort, but silently picking one would misrepresent either the
    code or the paper.
 5. **Assemble the Validated Handoff Package** — package the above plus the
    already-done G2P/PanPhon/cluster/ASR outputs into the single structured
-   format Figure 3 promises to Lane 2.
+   format Figure 3 promises to Lane 2. Suggested:
+   `person1/scripts/build_handoff_package.py`, writing one combined
+   artifact (e.g. `person1/artifacts/handoff_package.parquet` or a set of
+   joined TSVs) rather than leaving Lane 2 to reassemble six separate
+   files itself.
 6. **Confirm the ASR/alignment output is compatible** with what this
    proposal's Lane 2/3 actually need (substitution detection, word
    boundaries) rather than assuming the earlier P1.9-era work transfers
-   as-is.
+   as-is. Concretely: take 10–20 rows of `person1/asr/audio_text_ipa.tsv`
+   and manually check each one exposes (a) which word ASR substituted for
+   which reference word, and (b) that word's start/end time in the audio.
+   If both are directly readable from existing columns, the earlier work
+   transfers as-is; if either has to be re-derived, that's this item's
+   real remaining scope, not just a compatibility formality.
 
 ## 4. Handoff contract (what Lanes 2 and 3 are waiting on)
 

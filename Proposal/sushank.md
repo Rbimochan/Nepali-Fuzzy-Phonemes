@@ -25,12 +25,29 @@ side.
 
 ## 2. Four evidence branches to build (§4.3.1, §4.3.3, §4.4, Figure 4)
 
+### 2.0 Where training labels come from (GMM and Fuzzy both need this)
+
+Both §2.1 and §2.3 below need labeled training data, and the proposal
+doesn't spell out the source — but it doesn't need a separate annotation
+effort. The natural source is the **OpenSLR reference transcript itself**:
+for a given occurrence, whichever confusable-cluster word actually appears
+in the ground-truth transcript is the positive/`true_label` example for
+that word's GMM and for the fuzzy membership fit; the other cluster
+members, at their own occurrences, supply negative examples. This is the
+same `true_label` column already in Lane 3's evidence-table contract
+(`Proposal/GP_Classification_Implementation.md` §1), so no separate
+labeling pipeline is needed — just consistent joining against Lane 1's
+transcripts. (This is distinct from the human-ambiguity rating set in
+`Proposal/GP_Classification_Implementation.md`'s build plan, which is a
+later calibration check, not a training-label source.)
+
 ### 2.1 GMM likelihood scoring
 Per §4.3.1: train a **Gaussian Mixture Model (3 components)** for each
-candidate word using training data, using the general acoustic features
-(MFCC/F0/energy/spectral/duration) Lane 1 provides. Score = log-likelihood
-of the observed features under that candidate's GMM. Output: one `GMM`
-score per (occurrence, candidate) row.
+candidate word using training data (labels per §2.0 above), using the
+general acoustic features (MFCC/F0/energy/spectral/duration) Lane 1
+provides. Score = log-likelihood of the observed features under that
+candidate's GMM. Output: one `GMM` score per (occurrence, candidate) row.
+Suggested: `lane2_evidence/gmm_scoring.py`.
 
 ### 2.2 DTW similarity scoring
 Dynamic Time Warping similarity between the observed acoustic segment and
@@ -38,19 +55,21 @@ reference templates per candidate. The proposal doesn't fully specify the
 feature representation DTW runs on (raw MFCC frames is the standard
 choice and most likely what's intended, given MFCCs are already being
 computed for the GMM branch) — confirm this rather than guessing a
-different representation. Output: one `DTW` score per row.
+different representation. Output: one `DTW` score per row. Suggested:
+`lane2_evidence/dtw_scoring.py`.
 
 ### 2.3 Fuzzy evidence integration (§4.3.3, Figure 5)
 For each phonetic cue (VOT primarily, per Figure 5's example; extendable
 to the other three cues once they exist), define fuzzy membership
-functions from training-data distributions — the proposal's Figure 5
-example uses three memberships (Unaspirated / Aspirated / Ambiguous) as
-sigmoid/bell-shaped curves over VOT in ms. Aggregate per-cue membership
-degrees into one `Fuzzy` score via a **weighted sum, weights learned
-during training** (exact learning procedure for the weights isn't
-specified in the proposal — needs a design decision, e.g. fit against
-the same training labels the GP classifier will use, or a separate
-calibration step).
+functions from training-data distributions (labels per §2.0 above) — the
+proposal's Figure 5 example uses three memberships (Unaspirated /
+Aspirated / Ambiguous) as sigmoid/bell-shaped curves over VOT in ms.
+Aggregate per-cue membership degrees into one `Fuzzy` score via a
+**weighted sum, weights learned during training** (exact learning
+procedure for the weights isn't specified in the proposal — needs a
+design decision, e.g. fit the weights by logistic regression against the
+same §2.0 labels, or a separate calibration step). Suggested:
+`lane2_evidence/fuzzy_integration.py`.
 
 ### 2.4 LDA contextual evidence (§4.4)
 1. **Corpus**: 50,000 Nepali documents (news, Wikipedia, web text) — not
@@ -67,7 +86,10 @@ calibration step).
    ```
    where `K=20`, `P(t|context)` is the posterior topic probability given
    the context, `P(w|t)` the topic-word probability. Output: one `Topic`
-   score per row.
+   score per row. Suggested: `lane2_evidence/lda_context.py`, with the
+   trained model artifact saved separately (e.g.
+   `lane2_evidence/artifacts/lda_model.gensim`) since retraining LDA per
+   run would be wasteful.
 
 ## 3. Output — the Candidate × Occurrence Evidence Table
 
