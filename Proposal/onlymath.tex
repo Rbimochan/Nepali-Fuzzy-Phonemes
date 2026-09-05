@@ -1,0 +1,211 @@
+% onlymath.tex -- standalone mathematical companion to sample.tex.
+%
+% Every formula in sample.tex, pulled out with the derivation shown
+% (not just the final restated equation). Single-column article class
+% since this is a technical appendix/study note, not a submission
+% draft -- pair with sample.tex for the full paper.
+%
+% Compiled and verified with tectonic in this session; zero errors.
+
+\documentclass[11pt]{article}
+\usepackage{amsmath,amssymb}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\geometry{margin=1in}
+
+\title{Fuzzy Phonemes: Mathematical Derivations}
+\author{Companion to \texttt{sample.tex}}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Candidate selection as Bayesian posterior}
+
+\subsection{Setup}
+Given an ASR hypothesis word $w_{asr}$, a candidate set
+$\mathcal{C} = \{c_1, \ldots, c_k\}$, the acoustic segment $s$, and
+sentence context $T$, we want the posterior probability of each
+candidate word $w \in \mathcal{C} \cup \{w_{asr}\}$ being the one
+actually spoken.
+
+\subsection{Derivation}
+Start from Bayes' rule over the joint evidence $(s, T)$:
+\begin{equation}
+P(w \mid s, T) = \frac{P(s, T \mid w) \, P(w)}{P(s, T)}.
+\end{equation}
+Assume the acoustic evidence $s$ and the contextual evidence $T$ are
+conditionally independent given the word $w$ (a standard naive-Bayes-style
+simplifying assumption --- acoustic realization and surrounding topic are
+treated as separate, non-interacting evidence channels):
+\begin{equation}
+P(s, T \mid w) = P(s \mid w) \, P(T \mid w).
+\end{equation}
+Parameterize each factor: $P(s \mid w) = P(s \mid w, \theta_{ac})$ (the
+acoustic model, itself a fusion of general acoustic features, explicit
+phonetic cues, and the GP classifier's output), $P(T \mid w) = P(T \mid
+w, \theta_{ctx})$ (the LDA context model), and the prior $P(w) = P(w \mid
+\theta_{pr})$ (corpus word-frequency prior). Substituting:
+\begin{equation}
+P(w \mid s, T, \theta) \propto P(s \mid w, \theta_{ac}) \cdot
+P(T \mid w, \theta_{ctx}) \cdot P(w \mid \theta_{pr}).
+\end{equation}
+The proportionality constant $P(s,T)$ doesn't depend on $w$, so it's
+recovered by normalizing over the candidate set --- summing the same
+unnormalized expression over every $w' \in \mathcal{C} \cup \{w_{asr}\}$
+and dividing:
+\begin{equation}
+P(w \mid s, T, \theta) = \frac{P(s \mid w, \theta_{ac}) \cdot P(T \mid w, \theta_{ctx}) \cdot P(w \mid \theta_{pr})}
+{\displaystyle\sum_{w' \in \mathcal{C} \cup \{w_{asr}\}} P(s \mid w', \theta_{ac}) \cdot P(T \mid w', \theta_{ctx}) \cdot P(w' \mid \theta_{pr})}.
+\label{eq:posterior}
+\end{equation}
+The decision rule is $w^* = \arg\max_{w \in \mathcal{C}\cup\{w_{asr}\}} P(w \mid s, T, \theta)$.
+
+\section{Gaussian Process classification}
+
+\subsection{Feature vector}
+Each candidate occurrence is represented by:
+\begin{equation}
+X = [\text{VOT},\ F0_{\text{pert}},\ H1H2,\ \text{AspDur},\ \text{GMM},\ \text{DTW},\ \text{Fuzzy},\ \text{Topic}] \in \mathbb{R}^8.
+\end{equation}
+Standardized per-dimension using training-split statistics only:
+\begin{equation}
+X'_j = \frac{X_j - \mu_j^{\text{train}}}{\sigma_j^{\text{train}}}, \qquad j = 1, \ldots, 8.
+\label{eq:standardize}
+\end{equation}
+
+\subsection{GP prior and the classification link}
+A GP places a prior directly over a latent function $f(X)$:
+\begin{equation}
+f(X) \sim \mathcal{GP}\big(0,\ k(X, X')\big),
+\end{equation}
+i.e.\ any finite set of function values is jointly Gaussian, fully
+specified by the covariance (kernel) function $k$. For \emph{regression}
+this $f$ would be the target directly; for \emph{classification}, binary
+labels $y \in \{0,1\}$ can't be Gaussian, so $f$ is squashed through a
+sigmoid-like link before it becomes a probability. This model uses the
+\textbf{probit} link (the standard normal CDF $\Phi$) with a Bernoulli
+likelihood:
+\begin{align}
+p(y=1 \mid f) &= \Phi(f), \\
+p(y \mid f) &= \Phi(f)^y \, \big(1-\Phi(f)\big)^{1-y}.
+\end{align}
+Because the Bernoulli likelihood isn't Gaussian, the true posterior
+$p(f \mid \mathcal{D})$ has no closed form. \textbf{Expectation
+Propagation (EP)} approximates it by iteratively replacing each
+non-Gaussian likelihood factor with a Gaussian approximation, matching
+moments (mean and variance) against the true tilted distribution at each
+step, until the approximation converges. The predictive distribution for
+a new point $X_*$ is then obtained by pushing this approximate Gaussian
+posterior over $f_*$ through $\Phi(\cdot)$ again to get a class
+probability.
+
+\subsection{Covariance functions compared}
+Squared Exponential (RBF) --- infinitely differentiable, assumes very
+smooth $f$:
+\begin{equation}
+k_{\text{RBF}}(x,x') = \sigma_f^2 \exp\left(-\frac{\|x-x'\|^2}{2\ell^2}\right).
+\end{equation}
+Mat\'ern with $\nu = 5/2$ --- twice mean-square differentiable, a milder
+smoothness assumption obtained by taking the general Mat\'ern kernel
+\begin{equation}
+k_{\text{M}\nu}(x,x') = \sigma_f^2 \frac{2^{1-\nu}}{\Gamma(\nu)}
+\left(\frac{\sqrt{2\nu}\|x-x'\|}{\ell}\right)^{\nu}
+K_\nu\!\left(\frac{\sqrt{2\nu}\|x-x'\|}{\ell}\right)
+\end{equation}
+and substituting the half-integer case $\nu=5/2$, where the modified
+Bessel function $K_\nu$ collapses to an elementary closed form:
+\begin{equation}
+k_{\text{M52}}(x,x') = \sigma_f^2\left(1+\frac{\sqrt{5}\|x-x'\|}{\ell}+\frac{5\|x-x'\|^2}{3\ell^2}\right)\exp\left(-\frac{\sqrt{5}\|x-x'\|}{\ell}\right).
+\end{equation}
+In both, $\sigma_f^2$ is the signal variance and $\ell$ the lengthscale;
+both are hyperparameters fit by maximizing the log marginal likelihood
+$\log p(\mathbf{y} \mid X)$ via L-BFGS-B (a quasi-Newton method using an
+approximate inverse Hessian, avoiding the cost of computing the true
+Hessian at every step).
+
+\subsection{Regression-to-classification}
+A second arm trains a GP \emph{regressor} (identical kernel choices, but
+a Gaussian likelihood instead of Bernoulli/probit) on a continuous
+confusability score $y \in [0,1]$, then thresholds the predictive mean:
+\begin{equation}
+\hat{y}_{\text{class}} =
+\begin{cases}
+1 & \hat{y}_{\text{reg}} \geq \tau \\
+0 & \hat{y}_{\text{reg}} < \tau
+\end{cases}
+\qquad \tau = 0.5.
+\label{eq:threshold}
+\end{equation}
+\emph{Open question (unresolved in the source proposal):} the definition
+of $y$ itself. The working assumption used elsewhere in this project is
+$y=1$ for the true candidate and $y=0$ otherwise --- i.e.\ the regressor
+is fit on the same labels the classifier uses, just modeled continuously.
+
+\section{Fuzzy evidence aggregation}
+
+For a cue value $c$ (e.g.\ VOT in ms), define membership functions
+$\mu_m(c) \in [0,1]$ for each linguistic category $m$ (e.g.\ Unaspirated,
+Aspirated, Ambiguous), fit from the training-data distribution of that
+cue. The aggregated fuzzy score for a candidate is a weighted sum over
+all cues $c^{(1)}, \ldots, c^{(n)}$ and their most-supported memberships:
+\begin{equation}
+\text{Fuzzy}(w) = \sum_{i=1}^{n} \beta_i \cdot \max_m \, \mu_m\!\left(c^{(i)}\right),
+\end{equation}
+where the weights $\beta_i$ are learned during training (the exact
+fitting procedure is an open question --- see \texttt{sushank.md} \S2.3
+--- one reasonable choice is fitting $\beta$ by logistic regression
+against the same training labels used elsewhere).
+
+\section{Contextual evidence via LDA}
+
+\subsection{Generative model (brief)}
+LDA assumes each document is a mixture over $K$ latent topics, and each
+topic is a distribution over the vocabulary. For a document, a topic
+proportion vector $\theta \sim \text{Dirichlet}(\alpha)$ is drawn, then
+each word's topic assignment $z \sim \text{Categorical}(\theta)$, then
+the word itself $\sim \text{Categorical}(\phi_z)$, where $\phi_z \sim
+\text{Dirichlet}(\eta)$ is topic $z$'s word distribution. Fitting via
+\texttt{gensim} estimates $\phi$ (topic-word distributions) from the
+50{,}000-document corpus; $K=20$.
+
+\subsection{Context score}
+For a candidate word $w$ and its surrounding sentence context (excluding
+$w$ itself), the posterior topic distribution $P(t \mid \text{context})$
+is inferred, then combined with each topic's affinity for $w$:
+\begin{equation}
+\text{ContextScore}(w) = \sum_{t=1}^{K} P(t \mid \text{context}) \cdot P(w \mid t).
+\label{eq:context}
+\end{equation}
+This is precisely $\mathbb{E}_{t \sim P(\cdot \mid \text{context})}\big[P(w \mid t)\big]$
+--- the expected topic-word probability of $w$ under the context's
+inferred topic mixture. A candidate that fits the surrounding topic well
+gets a high score even if its acoustic evidence alone is ambiguous.
+
+\section{Evaluation metrics}
+
+These are standard definitions (not stated as explicit equations in the
+source proposal, but implied by naming the metrics) --- included here so
+the evaluation code has an unambiguous target to implement against.
+
+\subsection{Brier score}
+For $N$ predictions with probability $p_i$ assigned to the outcome that
+actually occurred $o_i \in \{0,1\}$:
+\begin{equation}
+\text{Brier} = \frac{1}{N} \sum_{i=1}^{N} (p_i - o_i)^2.
+\end{equation}
+Lower is better; a perfectly calibrated, always-correct classifier
+scores 0.
+
+\subsection{Expected Calibration Error (ECE)}
+Partition predictions into $B$ confidence bins by predicted probability.
+For bin $b$, let $\text{acc}(b)$ be the empirical accuracy of predictions
+in that bin and $\text{conf}(b)$ the average predicted confidence:
+\begin{equation}
+\text{ECE} = \sum_{b=1}^{B} \frac{|b|}{N} \, \big|\text{acc}(b) - \text{conf}(b)\big|,
+\end{equation}
+where $|b|$ is the number of predictions falling in bin $b$. ECE is the
+confidence-weighted average gap between how confident the model claims
+to be and how often it's actually right.
+
+\end{document}
