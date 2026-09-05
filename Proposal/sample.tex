@@ -274,11 +274,11 @@ standardized using training-only statistics. Missing VOT values (non-initial
 stops) imputed via KNN ($K=5$). Speaker-disjoint 70/15/15 split.
 
 \subsection{Ablation Grid}
-Eight configurations (E0--E7) toggle three evidence branches on/off:
-\emph{general} (GMM+DTW), \emph{cue} (VOT/F0$_{\text{pert}}$/H1H2/AspDur/Fuzzy),
-\emph{context} (Topic). E0 is a majority-class baseline; E7 is the full
-hybrid model. $2^3=8$ matches the abstract's ``eight experimental
-configurations.''
+Three evidence branches are toggled on/off to give eight configurations
+(E0--E7), matching the abstract's ``eight experimental configurations'':
+\emph{general} (GMM, DTW), \emph{cue} (VOT, F0$_{\text{pert}}$, H1H2,
+AspDur, Fuzzy), and \emph{context} (Topic). E0 is a majority-class
+baseline; E7 is the full hybrid model.
 
 \subsection{Evaluation Metrics}
 Candidate-level: accuracy, macro-F1, confusion matrix. Calibration:
@@ -290,10 +290,10 @@ substitution error rate, WER/CER before and after correction.
 \textbf{[TO BE COMPLETED.]} This section intentionally contains no
 numbers yet. Populate it only after:
 \begin{enumerate}
-  \item Lane 1 (Utsab) delivers real VOT/F0$_{\text{pert}}$/H1H2/AspDur
-        extraction per occurrence;
-  \item Lane 2 (Sushank) delivers real GMM/DTW/Fuzzy/Topic scores in the
-        Candidate $\times$ Occurrence Evidence Table;
+  \item Lane 1 (Utsab) delivers real VOT, F0$_{\text{pert}}$, H1H2, and
+        AspDur extraction per occurrence;
+  \item Lane 2 (Sushank) delivers real GMM, DTW, Fuzzy, and Topic scores
+        in the Candidate $\times$ Occurrence Evidence Table;
   \item \texttt{Proposal/scripts/gp\_classifier\_gpy.py} and
         \texttt{Proposal/scripts/ablation\_grid.py} are rerun against
         that real table (both currently verified working against
